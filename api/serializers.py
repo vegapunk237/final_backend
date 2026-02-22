@@ -3,7 +3,6 @@ from rest_framework import serializers
 from .models import TeacherRequest, ParentRequest, Appointment
 
 class TeacherRequestSerializer(serializers.ModelSerializer):
-    # Champs calculés
     documents_count = serializers.SerializerMethodField()
     
     class Meta:
@@ -38,22 +37,19 @@ class TeacherRequestSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'documents_count']
         extra_kwargs = {
-            'password': {'write_only': True}  # Ne jamais renvoyer le mot de passe
+            'password': {'write_only': True}
         }
     
     def get_documents_count(self, obj):
-        """Retourne le nombre de documents uploadés"""
         return len(obj.documents) if obj.documents else 0
     
     def validate_email(self, value):
-        """Valider le format de l'email"""
         value = value.lower().strip()
         if not value:
             raise serializers.ValidationError("L'email est requis")
         return value
     
     def validate_subjects(self, value):
-        """Valider que subjects est une liste"""
         if not isinstance(value, list):
             raise serializers.ValidationError("Les matières doivent être une liste")
         if len(value) == 0:
@@ -61,46 +57,35 @@ class TeacherRequestSerializer(serializers.ModelSerializer):
         return value
     
     def validate_documents(self, value):
-        """Valider les documents"""
+        """Accepter les documents sans validation stricte — la view s'en charge"""
         if not isinstance(value, list):
             raise serializers.ValidationError("Les documents doivent être une liste")
-        
-        # Vérifier le nombre de documents
         if len(value) > 5:
             raise serializers.ValidationError("Maximum 5 documents autorisés")
-        
-        # Vérifier la structure de chaque document
+        # Normaliser fileName/name sans bloquer
+        normalized = []
         for doc in value:
-            if not isinstance(doc, dict):
-                raise serializers.ValidationError("Format de document invalide")
-            
-            required_keys = ['type', 'file', 'fileName']
-            for key in required_keys:
-                if key not in doc:
-                    raise serializers.ValidationError(f"Le champ '{key}' est requis dans chaque document")
-        
-        return value
+            if isinstance(doc, dict):
+                file_name = doc.get('fileName') or doc.get('name') or 'document'
+                normalized.append({
+                    'type':     doc.get('type', ''),
+                    'fileName': file_name,
+                    'name':     file_name,
+                    'file':     doc.get('file', ''),
+                })
+        return normalized
     
     def validate_accept_terms(self, value):
-        """Vérifier que les CGU sont acceptées"""
         if not value:
             raise serializers.ValidationError("Vous devez accepter les Conditions Générales d'Utilisation")
         return value
     
     def validate(self, data):
-        """Validation globale"""
-        # Vérifier que le mot de passe est présent lors de la création
-        if self.instance is None:  # Création
+        if self.instance is None:  # Création uniquement
             if 'password' not in data or not data['password']:
-                raise serializers.ValidationError({
-                    'password': 'Le mot de passe est requis'
-                })
-            
+                raise serializers.ValidationError({'password': 'Le mot de passe est requis'})
             if len(data['password']) < 6:
-                raise serializers.ValidationError({
-                    'password': 'Le mot de passe doit contenir au moins 6 caractères'
-                })
-        
+                raise serializers.ValidationError({'password': 'Le mot de passe doit contenir au moins 6 caractères'})
         return data
 
 
@@ -112,29 +97,8 @@ class ParentRequestSerializer(serializers.ModelSerializer):
     childLevel = serializers.CharField(source='child_level', required=False)
     
     class Meta:
-        model = ParentRequest
-        fields = [
-            'id',
-            'parent_name', 'parentName',  # Les deux formats
-            'email',
-            'phone',
-            'address',
-            'password',
-            'child_name', 'childName',  # Les deux formats
-            'child_age', 'childAge',  # Les deux formats
-            'child_level', 'childLevel',  # Les deux formats
-            'subjects',
-            'availability',
-            'status',
-            'created_at',
-            'updated_at'
-        ]
-        extra_kwargs = {
-            'password': {'write_only': True},
-            'status': {'read_only': True},
-            'created_at': {'read_only': True},
-            'updated_at': {'read_only': True}
-        }
+        model  = ParentRequest
+        fields = '__all__'
     
     def validate_email(self, value):
         """Normaliser l'email"""
@@ -157,13 +121,25 @@ class ParentRequestSerializer(serializers.ModelSerializer):
         return value
     
     def to_representation(self, instance):
-        """Renvoyer les données en camelCase pour le frontend"""
+        """Convertit snake_case → camelCase pour le frontend."""
         data = super().to_representation(instance)
-        # Supprimer les doublons snake_case
-        fields_to_remove = ['parent_name', 'child_name', 'child_age', 'child_level']
-        for field in fields_to_remove:
-            data.pop(field, None)
-        return data
+        return {
+            'id':              data.get('id'),
+            'parentFirstName': data.get('parent_first_name'),
+            'parentLastName':  data.get('parent_last_name'),
+            'parentName':      f"{data.get('parent_first_name', '')} {data.get('parent_last_name', '')}".strip(),
+            'email':           data.get('email'),
+            'phone':           data.get('phone'),
+            'password':        data.get('password'),   # retiré dans les réponses API
+            'address':         data.get('address'),
+            'postalCode':      data.get('postal_code'),
+            'message':         data.get('message'),
+            'children':        data.get('children', []),
+            'acceptTerms':     data.get('accept_terms'),
+            'status':          data.get('status'),
+            'createdAt':       data.get('created_at'),
+            'updatedAt':       data.get('updated_at'),
+        }
 
 
 class AppointmentSerializer(serializers.ModelSerializer):

@@ -56,40 +56,47 @@ class TeacherRequest(models.Model):
         return f"{self.full_name} - {self.email}"
 
 
+# ─── REMPLACE la classe ParentRequest dans api/models.py ─────────────────────
+
 class ParentRequest(models.Model):
     STATUS_CHOICES = [
         ('pending', 'En attente'),
         ('approved', 'Approuvé'),
         ('rejected', 'Rejeté'),
     ]
-    
-    # Informations parent
-    parent_name = models.CharField(max_length=255)
-    email = models.EmailField(unique=True, validators=[EmailValidator()])
-    phone = models.CharField(max_length=50)
-    address = models.TextField()
-    password = models.CharField(max_length=255)
-    
-    # Informations enfant
-    child_name = models.CharField(max_length=255)
-    child_age = models.IntegerField()
-    child_level = models.CharField(max_length=100)
-    subjects = models.JSONField()
-    availability = models.TextField(blank=True, null=True)
-    
-    # Statut
+
+    # ── Informations parent ───────────────────────────────────────────────────
+    parent_first_name = models.CharField(max_length=150)
+    parent_last_name  = models.CharField(max_length=150)
+    email             = models.EmailField(unique=True, validators=[EmailValidator()])
+    phone             = models.CharField(max_length=50)
+    password          = models.CharField(max_length=255)   # ⚠️ hasher en prod
+    address           = models.TextField(blank=True)
+    postal_code       = models.CharField(max_length=20, blank=True)
+    message           = models.TextField(blank=True)       # précisions complémentaires
+
+    # ── Enfants (JSON array) ──────────────────────────────────────────────────
+    # Chaque enfant : { firstName, lastName, level, subjects, formula,
+    #                   preferredDays, preferredSlots, objectives,
+    #                   specificNeeds, interests, mindset }
+    children = models.JSONField(default=list)
+
+    # ── Consentements ─────────────────────────────────────────────────────────
+    accept_terms = models.BooleanField(default=False)
+
+    # ── Statut ────────────────────────────────────────────────────────────────
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-    
-    # Timestamps
+
+    # ── Timestamps ────────────────────────────────────────────────────────────
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = 'parent_requests'
         ordering = ['-created_at']
-    
+
     def __str__(self):
-        return f"{self.parent_name} - {self.child_name}"
+        return f"{self.parent_first_name} {self.parent_last_name} - {self.email}"
 
 
 class Appointment(models.Model):

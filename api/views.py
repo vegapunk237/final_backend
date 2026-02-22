@@ -27,7 +27,6 @@ class TeacherRequestViewSet(viewsets.ModelViewSet):
         try:
             subject = f'Nouvelle candidature enseignant - {teacher.full_name}'
             
-            # Corps de l'email
             message = f"""
 Nouvelle candidature enseignant reçue !
 
@@ -58,7 +57,7 @@ Nouvelle candidature enseignant reçue !
 
 📄 DOCUMENTS FOURNIS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{chr(10).join([f"• {doc.get('type')} - {doc.get('name')}" for doc in documents])}
+{chr(10).join([f"• {doc.get('type')} - {doc.get('fileName') or doc.get('name', 'fichier')}" for doc in documents])}
 
 ✅ CONSENTEMENTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -75,74 +74,73 @@ Date de soumission : {teacher.created_at.strftime('%d/%m/%Y à %H:%M')}
 Cet email a été envoyé automatiquement par la plateforme.
             """
             
-            # Créer l'email
-            email = EmailMessage(
+            email_msg = EmailMessage(
                 subject=subject,
                 body=message,
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[settings.ADMIN_EMAIL],  # Email de l'admin
+                to=[settings.ADMIN_EMAIL],
                 reply_to=[teacher.email]
             )
             
             # Attacher le CV
             if teacher.cv_file:
                 try:
-                    # Décoder le base64 du CV
-                    cv_data = base64.b64decode(teacher.cv_file.split(',')[1] if ',' in teacher.cv_file else teacher.cv_file)
-                    email.attach(
+                    cv_data = base64.b64decode(
+                        teacher.cv_file.split(',')[1] if ',' in teacher.cv_file else teacher.cv_file
+                    )
+                    email_msg.attach(
                         filename=teacher.cv_filename or 'cv.pdf',
                         content=cv_data,
                         mimetype='application/pdf'
                     )
                 except Exception as e:
-                    print(f"⚠️ Erreur lors de l'attachement du CV: {str(e)}")
+                    print(f"⚠️ Erreur attachement CV: {str(e)}")
             
             # Attacher les autres documents
             for doc in documents:
                 try:
                     if doc.get('file'):
-                        # Décoder le base64
-                        file_data = base64.b64decode(doc['file'].split(',')[1] if ',' in doc['file'] else doc['file'])
+                        file_data = base64.b64decode(
+                            doc['file'].split(',')[1] if ',' in doc['file'] else doc['file']
+                        )
+                        # Accepter fileName OU name
+                        doc_filename = doc.get('fileName') or doc.get('name') or f"{doc.get('type', 'document')}.pdf"
                         
-                        # Déterminer le type MIME
                         mime_type = 'application/pdf'
-                        if doc.get('name'):
-                            if doc['name'].lower().endswith(('.jpg', '.jpeg')):
-                                mime_type = 'image/jpeg'
-                            elif doc['name'].lower().endswith('.png'):
-                                mime_type = 'image/png'
+                        name_lower = doc_filename.lower()
+                        if name_lower.endswith(('.jpg', '.jpeg')):
+                            mime_type = 'image/jpeg'
+                        elif name_lower.endswith('.png'):
+                            mime_type = 'image/png'
+                        elif name_lower.endswith(('.doc', '.docx')):
+                            mime_type = 'application/msword'
                         
-                        email.attach(
-                            filename=doc.get('name', f"{doc.get('type', 'document')}.pdf"),
+                        email_msg.attach(
+                            filename=doc_filename,
                             content=file_data,
                             mimetype=mime_type
                         )
                 except Exception as e:
-                    print(f"⚠️ Erreur lors de l'attachement du document {doc.get('name')}: {str(e)}")
+                    print(f"⚠️ Erreur attachement document {doc.get('fileName') or doc.get('name')}: {str(e)}")
             
-            # Envoyer l'email
-            email.send(fail_silently=False)
+            email_msg.send(fail_silently=False)
             print(f"✉️ Email envoyé avec succès pour {teacher.full_name}")
             return True
             
         except Exception as e:
-            print(f"❌ Erreur lors de l'envoi de l'email: {str(e)}")
+            print(f"❌ Erreur envoi email: {str(e)}")
             return False
     
     def create(self, request):
         """POST - Créer candidature enseignant avec documents obligatoires"""
         print("📥 Données reçues:", request.data.keys())
         
-        # Extraire les données
         data = request.data
         
-        # Vérifier que l'email n'existe pas déjà
+        # Vérifier email
         email = data.get('email', '').lower().strip()
         if not email:
-            return Response({
-                'success': False,
-                'message': 'Email requis'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'success': False, 'message': 'Email requis'}, status=status.HTTP_400_BAD_REQUEST)
         
         if TeacherRequest.objects.filter(email__iexact=email).exists():
             return Response({
@@ -150,19 +148,19 @@ Cet email a été envoyé automatiquement par la plateforme.
                 'message': 'Une candidature avec cet email existe déjà'
             }, status=status.HTTP_409_CONFLICT)
         
-        # Validation des champs obligatoires
+        # Validation champs obligatoires
         required_fields = {
-            'fullName': 'Nom complet',
-            'email': 'Email',
-            'phone': 'Téléphone',
-            'password': 'Mot de passe',
-            'zone': "Zone d'enseignement",
+            'fullName':    'Nom complet',
+            'email':       'Email',
+            'phone':       'Téléphone',
+            'password':    'Mot de passe',
+            'zone':        "Zone d'enseignement",
             'qualification': 'Diplôme',
-            'experience': 'Expérience',
-            'subjects': 'Matières',
-            'motivation': 'Lettre de motivation',
-            'cvFile': 'CV',
-            'acceptTerms': 'Acceptation des CGU'
+            'experience':  'Expérience',
+            'subjects':    'Matières',
+            'motivation':  'Lettre de motivation',
+            'cvFile':      'CV',
+            'acceptTerms': 'Acceptation des CGU',
         }
         
         for field, label in required_fields.items():
@@ -172,31 +170,47 @@ Cet email a été envoyé automatiquement par la plateforme.
                     'message': f'Le champ "{label}" est obligatoire'
                 }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Vérifier les CGU
         if not data.get('acceptTerms'):
             return Response({
                 'success': False,
-                'message': 'Vous devez accepter les Conditions Générales d\'Utilisation'
+                'message': "Vous devez accepter les Conditions Générales d'Utilisation"
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Validation des documents obligatoires
+        # Validation documents
         documents = data.get('documents', [])
-        if not documents or len(documents) == 0:
+        if not documents:
             return Response({
                 'success': False,
                 'message': 'Vous devez télécharger au moins un document obligatoire'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Vérifier les documents requis
+        # ✅ CORRECTION : normaliser chaque document (accepter fileName OU name)
+        normalized_docs = []
+        for doc in documents:
+            # Récupérer le nom du fichier depuis fileName ou name
+            file_name = doc.get('fileName') or doc.get('name')
+            if not file_name:
+                return Response({
+                    'success': False,
+                    'message': f"Le nom du fichier est manquant pour le document de type '{doc.get('type', 'inconnu')}'"
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            normalized_docs.append({
+                'type':     doc.get('type', ''),
+                'fileName': file_name,   # ← toujours 'fileName' en base
+                'name':     file_name,   # ← garder aussi 'name' pour compatibilité
+                'file':     doc.get('file', ''),
+            })
+        
+        # Vérifier documents requis
         required_docs = [
             "Pièce d'identité",
             "Justificatif de domicile",
             "RIB pour paiement",
-            "Copie du diplôme"
+            "Copie du diplôme",
         ]
-        
-        uploaded_doc_types = [doc.get('type') for doc in documents]
-        missing_docs = [doc for doc in required_docs if doc not in uploaded_doc_types]
+        uploaded_types = [doc['type'] for doc in normalized_docs]
+        missing_docs   = [d for d in required_docs if d not in uploaded_types]
         
         if missing_docs:
             return Response({
@@ -204,60 +218,52 @@ Cet email a été envoyé automatiquement par la plateforme.
                 'message': f'Documents manquants: {", ".join(missing_docs)}'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Préparer les données pour le modèle
+        # Préparer données pour le modèle
         teacher_data = {
-            'full_name': data.get('fullName'),
-            'email': email,
-            'phone': data.get('phone'),
-            'password': data.get('password'),  # ⚠️ À hasher en production
-            'zone': data.get('zone'),
-            'school': data.get('school', ''),
-            'diplome': data.get('diplome', ''),
-            'qualification': data.get('qualification'),
-            'experience': data.get('experience'),
-            'niveau_accepter': data.get('niveauAccepter', ''),
-            'format_cours': data.get('formatCours', ''),
-            'matiere_niveau': data.get('MatiereNiveau', ''),
-            'subjects': data.get('subjects', []),
-            'availability': data.get('availability', ''),
-            'motivation': data.get('motivation'),
-            'cv_file': data.get('cvFile'),
-            'cv_filename': data.get('cvFileName', 'cv.pdf'),
-            'documents': documents,
-            'accept_terms': data.get('acceptTerms', False),
+            'full_name':          data.get('fullName'),
+            'email':              email,
+            'phone':              data.get('phone'),
+            'password':           data.get('password'),
+            'zone':               data.get('zone'),
+            'school':             data.get('school', ''),
+            'diplome':            data.get('diplome', ''),
+            'qualification':      data.get('qualification'),
+            'experience':         data.get('experience'),
+            'niveau_accepter':    data.get('niveauAccepter', ''),
+            'format_cours':       data.get('formatCours', ''),
+            'matiere_niveau':     data.get('MatiereNiveau', ''),
+            'subjects':           data.get('subjects', []),
+            'availability':       data.get('availability', ''),
+            'motivation':         data.get('motivation'),
+            'cv_file':            data.get('cvFile'),
+            'cv_filename':        data.get('cvFileName', 'cv.pdf'),
+            'documents':          normalized_docs,   # ← docs normalisés
+            'accept_terms':       data.get('acceptTerms', False),
             'accept_verification': data.get('acceptVerification', False),
             'accept_profile_sharing': data.get('acceptProfileSharing', False),
-            'status': 'pending'
+            'status':             'pending',
         }
         
         try:
-            # Créer l'enseignant
             serializer = self.get_serializer(data=teacher_data)
             
             if serializer.is_valid():
                 teacher = serializer.save()
-                
                 print(f"✅ Candidature créée: {teacher.full_name} (ID: {teacher.id})")
                 
-                # 📧 ENVOYER L'EMAIL AVEC LES DOCUMENTS
-                email_sent = self.send_teacher_application_email(teacher, documents)
-                
-                if email_sent:
-                    print(f"✉️ Email de notification envoyé à l'administration")
-                else:
-                    print(f"⚠️ L'email n'a pas pu être envoyé, mais la candidature est enregistrée")
+                email_sent = self.send_teacher_application_email(teacher, normalized_docs)
                 
                 return Response({
                     'success': True,
                     'message': 'Candidature enregistrée avec succès. Vous recevrez une notification par email sous 48-72h.',
                     'data': {
-                        'id': teacher.id,
-                        'fullName': teacher.full_name,
-                        'email': teacher.email,
-                        'status': teacher.status,
+                        'id':             teacher.id,
+                        'fullName':       teacher.full_name,
+                        'email':          teacher.email,
+                        'status':         teacher.status,
                         'documentsCount': len(teacher.documents),
-                        'created_at': teacher.created_at.isoformat(),
-                        'emailSent': email_sent
+                        'created_at':     teacher.created_at.isoformat(),
+                        'emailSent':      email_sent,
                     }
                 }, status=status.HTTP_201_CREATED)
             else:
@@ -279,86 +285,51 @@ Cet email a été envoyé automatiquement par la plateforme.
         """GET - Liste toutes les candidatures"""
         teachers = self.get_queryset()
         serializer = self.get_serializer(teachers, many=True)
-        
-        # Statistiques
         stats = {
-            'total': teachers.count(),
-            'pending': teachers.filter(status='pending').count(),
+            'total':    teachers.count(),
+            'pending':  teachers.filter(status='pending').count(),
             'approved': teachers.filter(status='approved').count(),
             'rejected': teachers.filter(status='rejected').count(),
         }
-        
-        return Response({
-            'success': True,
-            'data': serializer.data,
-            'stats': stats
-        })
+        return Response({'success': True, 'data': serializer.data, 'stats': stats})
     
     def retrieve(self, request, pk=None):
         """GET - Une candidature par ID"""
         teacher = get_object_or_404(TeacherRequest, pk=pk)
         serializer = self.get_serializer(teacher)
-        
-        # Ne pas renvoyer le mot de passe
         data = serializer.data
         data.pop('password', None)
-        
-        return Response({
-            'success': True,
-            'data': data
-        })
+        return Response({'success': True, 'data': data})
     
     def update(self, request, pk=None):
         """PUT - Mettre à jour statut ou informations"""
         teacher = get_object_or_404(TeacherRequest, pk=pk)
         
-        # Si c'est juste un changement de statut
         if 'status' in request.data and len(request.data) == 1:
             new_status = request.data.get('status')
-            
             if new_status not in ['pending', 'approved', 'rejected']:
                 return Response({
                     'success': False,
                     'message': 'Statut invalide. Valeurs acceptées: pending, approved, rejected'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
             teacher.status = new_status
             teacher.save()
-            
             serializer = self.get_serializer(teacher)
-            return Response({
-                'success': True,
-                'message': f'Statut mis à jour: {new_status}',
-                'data': serializer.data
-            })
+            return Response({'success': True, 'message': f'Statut mis à jour: {new_status}', 'data': serializer.data})
         
-        # Sinon mise à jour complète
         serializer = self.get_serializer(teacher, data=request.data, partial=True)
-        
         if serializer.is_valid():
             serializer.save()
-            return Response({
-                'success': True,
-                'message': 'Candidature mise à jour avec succès',
-                'data': serializer.data
-            })
+            return Response({'success': True, 'message': 'Candidature mise à jour avec succès', 'data': serializer.data})
         
-        return Response({
-            'success': False,
-            'message': 'Données invalides',
-            'errors': serializer.errors
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'success': False, 'message': 'Données invalides', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     
     def destroy(self, request, pk=None):
         """DELETE - Supprimer candidature"""
         teacher = get_object_or_404(TeacherRequest, pk=pk)
         teacher_name = teacher.full_name
         teacher.delete()
-        
-        return Response({
-            'success': True,
-            'message': f'Candidature de {teacher_name} supprimée avec succès'
-        })
+        return Response({'success': True, 'message': f'Candidature de {teacher_name} supprimée avec succès'})
     
     @action(detail=False, methods=['post'], url_path='login')
     def login(self, request):
@@ -367,24 +338,17 @@ Cet email a été envoyé automatiquement par la plateforme.
         password = request.data.get('password')
         
         if not email or not password:
-            return Response({
-                'success': False,
-                'message': 'Email et mot de passe requis'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'success': False, 'message': 'Email et mot de passe requis'}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
             teacher = TeacherRequest.objects.get(email__iexact=email)
         except TeacherRequest.DoesNotExist:
-            return Response({
-                'success': False,
-                'message': 'Email ou mot de passe incorrect'
-            }, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({'success': False, 'message': 'Email ou mot de passe incorrect'}, status=status.HTTP_401_UNAUTHORIZED)
         
-        # Vérifier le statut
         if teacher.status == 'rejected':
             return Response({
                 'success': False,
-                'message': 'Votre candidature a été rejetée. Contactez l\'administration.',
+                'message': "Votre candidature a été rejetée. Contactez l'administration.",
                 'status': teacher.status
             }, status=status.HTTP_403_FORBIDDEN)
         
@@ -395,47 +359,31 @@ Cet email a été envoyé automatiquement par la plateforme.
                 'status': teacher.status
             }, status=status.HTTP_403_FORBIDDEN)
         
-        # Vérifier le mot de passe
-        if teacher.password != password:  # ⚠️ Utiliser bcrypt en production
-            return Response({
-                'success': False,
-                'message': 'Email ou mot de passe incorrect'
-            }, status=status.HTTP_401_UNAUTHORIZED)
+        if teacher.password != password:
+            return Response({'success': False, 'message': 'Email ou mot de passe incorrect'}, status=status.HTTP_401_UNAUTHORIZED)
         
-        # Connexion réussie
         serializer = self.get_serializer(teacher)
         data = serializer.data
         data.pop('password', None)
-        data.pop('cv_file', None)  # Ne pas renvoyer le CV en base64
+        data.pop('cv_file', None)
         data['role'] = 'teacher'
         data['documentsCount'] = len(teacher.documents)
         
-        return Response({
-            'success': True,
-            'message': 'Connexion réussie',
-            'data': data
-        })
+        return Response({'success': True, 'message': 'Connexion réussie', 'data': data})
     
     @action(detail=False, methods=['get'], url_path='stats')
     def get_stats(self, request):
         """GET - Statistiques des candidatures"""
-        total = TeacherRequest.objects.count()
-        pending = TeacherRequest.objects.filter(status='pending').count()
+        total    = TeacherRequest.objects.count()
+        pending  = TeacherRequest.objects.filter(status='pending').count()
         approved = TeacherRequest.objects.filter(status='approved').count()
         rejected = TeacherRequest.objects.filter(status='rejected').count()
-        
-        # Dernières candidatures
-        recent = TeacherRequest.objects.order_by('-created_at')[:5]
+        recent   = TeacherRequest.objects.order_by('-created_at')[:5]
         recent_serializer = self.get_serializer(recent, many=True)
         
         return Response({
             'success': True,
-            'stats': {
-                'total': total,
-                'pending': pending,
-                'approved': approved,
-                'rejected': rejected
-            },
+            'stats': {'total': total, 'pending': pending, 'approved': approved, 'rejected': rejected},
             'recent': recent_serializer.data
         })
 
@@ -445,97 +393,202 @@ Cet email a été envoyé automatiquement par la plateforme.
 # ============================================
 
 
+# ─── REMPLACE la classe ParentRequestViewSet dans api/views.py ───────────────
+# (garde tout le reste du fichier intact)
+
 class ParentRequestViewSet(viewsets.ModelViewSet):
     queryset = ParentRequest.objects.all()
     serializer_class = ParentRequestSerializer
-    
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 📧  EMAIL — envoyé à l'admin après chaque nouvelle candidature
+    # ─────────────────────────────────────────────────────────────────────────
+    def send_parent_request_email(self, parent):
+        """Envoie un email complet à l'admin avec toutes les infos du parent."""
+        try:
+            children = parent.children  # liste JSON
+
+            # ── Construire le bloc enfants ────────────────────────────────────
+            children_block = ""
+            for i, child in enumerate(children, 1):
+                formula_labels = {
+                    'enligne':      'Cours particulier en ligne',
+                    'adomicile':    "Cours à domicile (crédit d'impôt -50%)",
+                    'stage':        'Stage intensif (5 à 30 jours)',
+                    'pasencoresur': 'Je ne sais pas encore',
+                }
+                formula = formula_labels.get(child.get('formula', ''), child.get('formula', 'Non spécifié'))
+
+                def fmt_list(lst):
+                    return ', '.join(lst) if lst else 'Non spécifié'
+
+                children_block += f"""
+┌─ ENFANT {i} ──────────────────────────────────────────────
+│ Prénom / Nom    : {child.get('firstName', '')} {child.get('lastName', '')}
+│ Niveau scolaire : {child.get('level', 'Non spécifié')}
+│ Matières        : {fmt_list(child.get('subjects', []))}
+│ Formule         : {formula}
+│ Jours préférés  : {fmt_list(child.get('preferredDays', []))}
+│ Créneaux        : {fmt_list(child.get('preferredSlots', []))}
+│ Objectifs       : {fmt_list(child.get('objectives', []))}
+│ Besoins spéc.   : {fmt_list(child.get('specificNeeds', []))}
+│ Centres intérêt : {fmt_list(child.get('interests', []))}
+│ État d'esprit   : {fmt_list(child.get('mindset', []))}
+└────────────────────────────────────────────────────────────
+"""
+
+            subject = (
+                f"📚 Nouvelle demande de cours — "
+                f"{parent.parent_first_name} {parent.parent_last_name}"
+            )
+
+            body = f"""
+╔══════════════════════════════════════════════════════════════╗
+║          NOUVELLE DEMANDE DE COURS — KH PERFECTION           ║
+╚══════════════════════════════════════════════════════════════╝
+
+👤 INFORMATIONS PARENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Prénom        : {parent.parent_first_name}
+• Nom           : {parent.parent_last_name}
+• Email         : {parent.email}
+• Téléphone     : {parent.phone}
+• Adresse       : {parent.address or 'Non renseignée'}
+• Code postal   : {parent.postal_code or 'Non renseigné'}
+• Message       : {parent.message or 'Aucun message'}
+
+👶 ENFANT(S) CONCERNÉ(S) ({len(children)} enfant{'s' if len(children) > 1 else ''})
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{children_block}
+✅ CONSENTEMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• CGU acceptées : {'Oui ✓' if parent.accept_terms else 'Non ✗'}
+
+🔗 ACCÈS RAPIDE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• ID demande    : {parent.id}
+• Date          : {parent.created_at.strftime('%d/%m/%Y à %H:%M')}
+• Statut actuel : {parent.status}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Cet email a été généré automatiquement par la plateforme KH Perfection.
+Répondez directement à cet email pour contacter le parent.
+"""
+
+            email_msg = EmailMessage(
+                subject=subject,
+                body=body,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[settings.ADMIN_EMAIL],
+                reply_to=[parent.email],
+            )
+            email_msg.send(fail_silently=False)
+            print(f"✉️  Email envoyé pour {parent.parent_first_name} {parent.parent_last_name}")
+            return True
+
+        except Exception as e:
+            print(f"❌ Erreur email: {str(e)}")
+            return False
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # POST /api/parent-requests/   — Créer une demande
+    # ─────────────────────────────────────────────────────────────────────────
     def create(self, request):
-        """POST - Créer demande parent"""
         try:
             print("=" * 60)
-            print("📥 REQUÊTE PARENT REÇUE")
+            print("📥 NOUVELLE DEMANDE PARENT")
             print("=" * 60)
-            print("Données reçues:", list(request.data.keys()))
-            print("Email:", request.data.get('email'))
-            print("Parent name:", request.data.get('parentName'))
-            print("Child name:", request.data.get('childName'))
-            print("Subjects:", request.data.get('subjects'))
-            print("=" * 60)
-            
-            # Normaliser les données (camelCase → snake_case)
+
+            d = request.data  # alias court
+
+            # ── Validation email ──────────────────────────────────────────────
+            email = d.get('email', '').lower().strip()
+            if not email:
+                return Response(
+                    {'success': False, 'message': 'Email requis'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if ParentRequest.objects.filter(email__iexact=email).exists():
+                return Response(
+                    {'success': False, 'message': 'Une demande avec cet email existe déjà'},
+                    status=status.HTTP_409_CONFLICT
+                )
+
+            # ── Mapper camelCase → snake_case ─────────────────────────────────
             data = {
-                'parent_name': request.data.get('parentName'),
-                'email': request.data.get('email', '').lower().strip(),
-                'phone': request.data.get('phone'),
-                'address': request.data.get('address'),
-                'password': request.data.get('password'),
-                'child_name': request.data.get('childName'),
-                'child_age': request.data.get('childAge'),
-                'child_level': request.data.get('childLevel'),
-                'subjects': request.data.get('subjects', []),
-                'availability': request.data.get('availability', ''),
-                'status': 'pending'
+                'parent_first_name': d.get('parentFirstName', '').strip(),
+                'parent_last_name':  d.get('parentLastName', '').strip(),
+                'email':             email,
+                'phone':             d.get('phone', '').strip(),
+                'password':          d.get('password', ''),
+                'address':           d.get('address', '').strip(),
+                'postal_code':       d.get('postalCode', '').strip(),
+                'message':           d.get('message', '').strip(),
+                'children':          d.get('children', []),
+                'accept_terms':      d.get('acceptTerms', False),
+                'status':            'pending',
             }
-            
-            # Validation manuelle
-            if not data['email']:
-                return Response({
-                    'success': False,
-                    'message': 'Email requis'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Vérifier doublon email
-            if ParentRequest.objects.filter(email__iexact=data['email']).exists():
-                return Response({
-                    'success': False,
-                    'message': 'Une demande avec cet email existe déjà'
-                }, status=status.HTTP_409_CONFLICT)
-            
-            # Créer avec le serializer
+
+            # ── Validations de base ───────────────────────────────────────────
+            if not data['parent_first_name']:
+                return Response({'success': False, 'message': 'Prénom requis'}, status=400)
+            if not data['parent_last_name']:
+                return Response({'success': False, 'message': 'Nom requis'}, status=400)
+            if not data['phone']:
+                return Response({'success': False, 'message': 'Téléphone requis'}, status=400)
+            if not data['password']:
+                return Response({'success': False, 'message': 'Mot de passe requis'}, status=400)
+            if not data['children']:
+                return Response({'success': False, 'message': 'Au moins un enfant requis'}, status=400)
+            if not data['accept_terms']:
+                return Response({'success': False, 'message': 'Veuillez accepter les CGU'}, status=400)
+
+            # ── Créer via serializer ──────────────────────────────────────────
             serializer = self.get_serializer(data=data)
-            
+
             if serializer.is_valid():
                 parent = serializer.save()
-                
-                print(f"✅ Demande créée: {parent.parent_name} (ID: {parent.id})")
-                
+                print(f"✅ Demande créée — ID {parent.id}")
+
+                # 📧 Envoyer l'email
+                email_sent = self.send_parent_request_email(parent)
+
                 return Response({
                     'success': True,
-                    'message': 'Demande enregistrée avec succès',
+                    'message': (
+                        'Votre demande a bien été enregistrée. '
+                        'Vous recevrez votre devis sous 24 à 48h.'
+                    ),
                     'data': {
-                        'id': parent.id,
-                        'parentName': parent.parent_name,
-                        'email': parent.email,
-                        'childName': parent.child_name,
-                        'status': parent.status,
-                        'created_at': parent.created_at.isoformat()
+                        'id':          parent.id,
+                        'parentName':  f"{parent.parent_first_name} {parent.parent_last_name}",
+                        'email':       parent.email,
+                        'status':      parent.status,
+                        'emailSent':   email_sent,
+                        'createdAt':   parent.created_at.isoformat(),
                     }
                 }, status=status.HTTP_201_CREATED)
+
             else:
-                print("❌ Erreurs de validation:", serializer.errors)
+                print("❌ Erreurs validation:", serializer.errors)
                 return Response({
                     'success': False,
                     'message': 'Données invalides',
                     'errors': serializer.errors
                 }, status=status.HTTP_400_BAD_REQUEST)
-        
+
         except Exception as e:
-            print("=" * 60)
-            print("❌ ERREUR EXCEPTION")
-            print("=" * 60)
-            print(f"Type: {type(e).__name__}")
-            print(f"Message: {str(e)}")
-            print("Traceback:")
-            print(traceback.format_exc())
-            print("=" * 60)
-            
-            return Response({
-                'success': False,
-                'message': f'Erreur serveur: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+            print(f"❌ Exception: {traceback.format_exc()}")
+            return Response(
+                {'success': False, 'message': f'Erreur serveur: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # GET /api/parent-requests/
+    # ─────────────────────────────────────────────────────────────────────────
     def list(self, request):
-        """GET - Liste demandes"""
         parents = self.get_queryset()
         serializer = self.get_serializer(parents, many=True)
         return Response({
@@ -543,137 +596,111 @@ class ParentRequestViewSet(viewsets.ModelViewSet):
             'data': serializer.data,
             'count': parents.count()
         })
-    
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # GET /api/parent-requests/{id}/
+    # ─────────────────────────────────────────────────────────────────────────
     def retrieve(self, request, pk=None):
-        """GET - Une demande par ID"""
         parent = get_object_or_404(ParentRequest, pk=pk)
         serializer = self.get_serializer(parent)
-        
-        # Ne pas renvoyer le mot de passe
         data = serializer.data
         data.pop('password', None)
-        
-        return Response({
-            'success': True,
-            'data': data
-        })
-    
+        return Response({'success': True, 'data': data})
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # PUT /api/parent-requests/{id}/
+    # ─────────────────────────────────────────────────────────────────────────
     def update(self, request, pk=None):
-        """PUT - Mettre à jour statut"""
         parent = get_object_or_404(ParentRequest, pk=pk)
-        
-        # Si c'est juste un changement de statut
+
         if 'status' in request.data and len(request.data) == 1:
             new_status = request.data.get('status')
-            
             if new_status not in ['pending', 'approved', 'rejected']:
-                return Response({
-                    'success': False,
-                    'message': 'Statut invalide'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
+                return Response(
+                    {'success': False, 'message': 'Statut invalide'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             parent.status = new_status
             parent.save()
-            
-            serializer = self.get_serializer(parent)
             return Response({
                 'success': True,
-                'message': f'Statut mis à jour: {new_status}',
-                'data': serializer.data
+                'message': f'Statut mis à jour : {new_status}',
+                'data': self.get_serializer(parent).data
             })
-        
-        # Sinon mise à jour complète
+
         serializer = self.get_serializer(parent, data=request.data, partial=True)
-        
         if serializer.is_valid():
             serializer.save()
-            return Response({
-                'success': True,
-                'message': 'Demande mise à jour',
-                'data': serializer.data
-            })
-        
-        return Response({
-            'success': False,
-            'message': 'Données invalides',
-            'errors': serializer.errors
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
+            return Response({'success': True, 'message': 'Demande mise à jour', 'data': serializer.data})
+
+        return Response(
+            {'success': False, 'message': 'Données invalides', 'errors': serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # DELETE /api/parent-requests/{id}/
+    # ─────────────────────────────────────────────────────────────────────────
     def destroy(self, request, pk=None):
-        """DELETE - Supprimer"""
         parent = get_object_or_404(ParentRequest, pk=pk)
-        parent_name = parent.parent_name
+        name = f"{parent.parent_first_name} {parent.parent_last_name}"
         parent.delete()
-        
-        return Response({
-            'success': True,
-            'message': f'Demande de {parent_name} supprimée'
-        })
-    
+        return Response({'success': True, 'message': f'Demande de {name} supprimée'})
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # POST /api/parent-requests/login/
+    # ─────────────────────────────────────────────────────────────────────────
     @action(detail=False, methods=['post'], url_path='login')
     def login(self, request):
-        """POST - Connexion parent"""
-        email = request.data.get('email', '').lower().strip()
+        email    = request.data.get('email', '').lower().strip()
         password = request.data.get('password')
-        
+
         if not email or not password:
-            return Response({
-                'success': False,
-                'message': 'Email et mot de passe requis'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response(
+                {'success': False, 'message': 'Email et mot de passe requis'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         try:
             parent = ParentRequest.objects.get(email__iexact=email)
         except ParentRequest.DoesNotExist:
-            return Response({
-                'success': False,
-                'message': 'Email ou mot de passe incorrect'
-            }, status=status.HTTP_401_UNAUTHORIZED)
-        
-        # Vérifier le statut
+            return Response(
+                {'success': False, 'message': 'Email ou mot de passe incorrect'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
         if parent.status == 'rejected':
-            return Response({
-                'success': False,
-                'message': 'Votre demande a été rejetée',
-                'status': parent.status
-            }, status=status.HTTP_403_FORBIDDEN)
-        
+            return Response(
+                {'success': False, 'message': 'Votre demande a été rejetée.', 'status': parent.status},
+                status=status.HTTP_403_FORBIDDEN
+            )
         if parent.status == 'pending':
-            return Response({
-                'success': False,
-                'message': 'Votre demande est en cours de vérification',
-                'status': parent.status
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        # Vérifier le mot de passe
+            return Response(
+                {'success': False, 'message': 'Votre demande est en cours de vérification.', 'status': parent.status},
+                status=status.HTTP_403_FORBIDDEN
+            )
         if parent.password != password:
-            return Response({
-                'success': False,
-                'message': 'Email ou mot de passe incorrect'
-            }, status=status.HTTP_401_UNAUTHORIZED)
-        
-        # Connexion réussie
-        serializer = self.get_serializer(parent)
-        data = serializer.data
+            return Response(
+                {'success': False, 'message': 'Email ou mot de passe incorrect'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        data = self.get_serializer(parent).data
         data.pop('password', None)
         data['role'] = 'parent'
-        
-        return Response({
-            'success': True,
-            'message': 'Connexion réussie',
-            'data': data
-        })
-    
+        data['name'] = f"{parent.parent_first_name} {parent.parent_last_name}"
+
+        return Response({'success': True, 'message': 'Connexion réussie', 'data': data})
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # DELETE /api/parent-requests/clear-all/  (dev only)
+    # ─────────────────────────────────────────────────────────────────────────
     @action(detail=False, methods=['delete'], url_path='clear-all')
     def clear_all(self, request):
-        """DELETE - Supprimer toutes les demandes (DEV ONLY)"""
         count = ParentRequest.objects.count()
         ParentRequest.objects.all().delete()
-        
-        return Response({
-            'success': True,
-            'message': f'{count} demande(s) supprimée(s)'
-        })
+        return Response({'success': True, 'message': f'{count} demande(s) supprimée(s)'})
+
 
 
 # ============================================

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const API_URL = 'http://127.0.0.1:8000/api';
+const API_URL = 'https://dollar5665.pythonanywhere.com/api';
 
 const AdminDashboard = ({ navigate, user, onLogout }) => {
   const [activeTab, setActiveTab] = useState('teachers');
