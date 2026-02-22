@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const API_URL = 'http://127.0.0.1:8000/api';
+const API_URL = 'https://dollar5665.pythonanywhere.com/api';
 
 const LoginPage = ({ navigate, onLogin }) => {
   const [email, setEmail] = useState('');

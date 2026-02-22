@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ZegoUIKitPrebuilt } from '@zegocloud/zego-uikit-prebuilt';
 // ─────────────────────────────────────────────────────────────────────────────
 
-const API_URL = 'http://127.0.0.1:8000/api';
+const API_URL = 'https://dollar5665.pythonanywhere.com/api';
 
 const ParentDashboard = ({ navigate, user, onLogout }) => {
 
