@@ -1,0 +1,68 @@
+CREATE TABLE teacher_requests (
+  id SERIAL PRIMARY KEY,
+  full_name TEXT,
+  email TEXT UNIQUE,
+  phone TEXT,
+  password TEXT,
+  zone TEXT,
+  school TEXT,
+  diplome TEXT,
+  qualification TEXT,
+  experience TEXT,
+  niveau_accepter TEXT,
+  format_cours TEXT,
+  matiere_niveau TEXT,
+  subjects JSONB,
+  availability TEXT,
+  motivation TEXT,
+  cv_file TEXT,
+  cv_filename TEXT,
+  documents JSONB,
+  accept_terms BOOLEAN,
+  accept_verification BOOLEAN,
+  accept_profile_sharing BOOLEAN,
+  status TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP
+);
+
+CREATE TABLE parent_requests (
+  id SERIAL PRIMARY KEY,
+  parent_name TEXT,
+  email TEXT UNIQUE,
+  phone TEXT,
+  address TEXT,
+  password TEXT,
+  child_name TEXT,
+  child_age INT,
+  child_level TEXT,
+  subjects JSONB,
+  availability TEXT,
+  status TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP
+);
+
+CREATE TABLE appointments (
+  id SERIAL PRIMARY KEY,
+  parent_id INT,
+  parent_name TEXT,
+  parent_email TEXT,
+  student_name TEXT,
+  subject TEXT,
+  level TEXT,
+  preferred_date TEXT,
+  preferred_time TEXT,
+  duration TEXT,
+  location TEXT,
+  notes TEXT,
+  price_per_hour NUMERIC,
+  total_amount NUMERIC,
+  is_trial_course BOOLEAN,
+  status TEXT,
+  assigned_teacher_id INT,
+  assigned_teacher TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP
+);
+
