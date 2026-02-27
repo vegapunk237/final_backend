@@ -1,6 +1,25 @@
 # api/serializers.py
 from rest_framework import serializers
 from .models import TeacherRequest, ParentRequest, Appointment
+from .models import CourseFile
+
+class CourseFileSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = CourseFile
+        fields = [
+            'id', 'appointment', 'original_name', 'file_type',
+            'file_size', 'uploaded_by', 'uploader_name',
+            'description', 'uploaded_at', 'file_url'
+        ]
+        read_only_fields = ['id', 'uploaded_at', 'file_url']
+
+    def get_file_url(self, obj):
+        request = self.context.get('request')
+        if obj.file and request:
+            return request.build_absolute_uri(obj.file.url)
+        return None
 
 class TeacherRequestSerializer(serializers.ModelSerializer):
     documents_count = serializers.SerializerMethodField()

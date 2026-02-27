@@ -18,6 +18,143 @@ from django.conf import settings
 import base64
 from io import BytesIO
 
+from django.http import FileResponse, Http404
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.response import Response
+from rest_framework import status
+from .models import CourseFile, Appointment
+from .serializers import CourseFileSerializer
+
+# Types de fichiers autorisés
+ALLOWED_EXTENSIONS = {
+    'pdf':  ['pdf'],
+    'image':['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'],
+    'word': ['doc', 'docx'],
+    'excel':['xls', 'xlsx'],
+}
+ALL_ALLOWED = [ext for exts in ALLOWED_EXTENSIONS.values() for ext in exts]
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
+
+
+def get_file_type(filename):
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+    for ftype, exts in ALLOWED_EXTENSIONS.items():
+        if ext in exts:
+            return ftype
+    return 'other'
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class CourseFileListUploadView(APIView):
+    """
+    GET  /api/appointments/<appointment_id>/files/   → liste les fichiers du cours
+    POST /api/appointments/<appointment_id>/files/   → upload un fichier
+    """
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request, appointment_id):
+        try:
+            appointment = Appointment.objects.get(id=appointment_id)
+        except Appointment.DoesNotExist:
+            return Response({'success': False, 'message': 'Rendez-vous introuvable'}, status=404)
+
+        files = CourseFile.objects.filter(appointment=appointment)
+        serializer = CourseFileSerializer(files, many=True, context={'request': request})
+        return Response({'success': True, 'data': serializer.data})
+
+    def post(self, request, appointment_id):
+        try:
+            appointment = Appointment.objects.get(id=appointment_id)
+        except Appointment.DoesNotExist:
+            return Response({'success': False, 'message': 'Rendez-vous introuvable'}, status=404)
+
+        uploaded_file = request.FILES.get('file')
+        if not uploaded_file:
+            return Response({'success': False, 'message': 'Aucun fichier reçu'}, status=400)
+
+        # Vérification extension
+        original_name = uploaded_file.name
+        ext = original_name.rsplit('.', 1)[-1].lower() if '.' in original_name else ''
+        if ext not in ALL_ALLOWED:
+            return Response({
+                'success': False,
+                'message': f'Extension .{ext} non autorisée. Formats acceptés : PDF, images, Word, Excel'
+            }, status=400)
+
+        # Vérification taille
+        if uploaded_file.size > MAX_FILE_SIZE:
+            return Response({
+                'success': False,
+                'message': f'Fichier trop lourd ({uploaded_file.size // (1024*1024)} MB). Maximum : 20 MB'
+            }, status=400)
+
+        course_file = CourseFile(
+            appointment   = appointment,
+            file          = uploaded_file,
+            original_name = original_name,
+            file_type     = get_file_type(original_name),
+            file_size     = uploaded_file.size,
+            uploaded_by   = request.data.get('uploaded_by', 'parent'),
+            uploader_name = request.data.get('uploader_name', ''),
+            description   = request.data.get('description', ''),
+        )
+        course_file.save()
+
+        serializer = CourseFileSerializer(course_file, context={'request': request})
+        return Response({'success': True, 'data': serializer.data}, status=201)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class CourseFileDetailView(APIView):
+    """
+    GET    /api/files/<file_id>/download/  → télécharger le fichier
+    DELETE /api/files/<file_id>/           → supprimer le fichier
+    """
+
+    def get_object(self, file_id):
+        try:
+            return CourseFile.objects.get(id=file_id)
+        except CourseFile.DoesNotExist:
+            return None
+
+    def delete(self, request, file_id):
+        course_file = self.get_object(file_id)
+        if not course_file:
+            return Response({'success': False, 'message': 'Fichier introuvable'}, status=404)
+
+        # Supprimer le fichier physique
+        if course_file.file and os.path.isfile(course_file.file.path):
+            os.remove(course_file.file.path)
+
+        course_file.delete()
+        return Response({'success': True, 'message': 'Fichier supprimé'})
+
+
+class CourseFileDownloadView(APIView):
+    """
+    GET /api/files/<file_id>/download/
+    Force le téléchargement avec Content-Disposition: attachment
+    """
+
+    def get(self, request, file_id):
+        try:
+            course_file = CourseFile.objects.get(id=file_id)
+        except CourseFile.DoesNotExist:
+            raise Http404
+
+        if not course_file.file or not os.path.isfile(course_file.file.path):
+            raise Http404
+
+        response = FileResponse(
+            open(course_file.file.path, 'rb'),
+            as_attachment=True,
+            filename=course_file.original_name
+        )
+        return response
+
 class TeacherRequestViewSet(viewsets.ModelViewSet):
     queryset = TeacherRequest.objects.all()
     serializer_class = TeacherRequestSerializer

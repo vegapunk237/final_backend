@@ -8,6 +8,7 @@ from .views import (
     health_check
     
 )
+from . import views
 
 router = DefaultRouter()
 router.register(r'teacher-requests', TeacherRequestViewSet, basename='teacher-request')
@@ -22,4 +23,23 @@ urlpatterns = [
     # Routes de connexion
     path('teacher-login/', TeacherRequestViewSet.as_view({'post': 'login'}), name='teacher-login'),
     path('parent-login/', ParentRequestViewSet.as_view({'post': 'login'}), name='parent-login'),
+    # ── Fichiers de cours ──────────────────────────────────────────────────
+    # Lister + uploader les fichiers d'un cours
+    path(
+        'appointments/<int:appointment_id>/files/',
+        views.CourseFileListUploadView.as_view(),
+        name='course-files'
+    ),
+    # Supprimer un fichier
+    path(
+        'files/<int:file_id>/',
+        views.CourseFileDetailView.as_view(),
+        name='course-file-detail'
+    ),
+    # Télécharger un fichier (force download)
+    path(
+        'files/<int:file_id>/download/',
+        views.CourseFileDownloadView.as_view(),
+        name='course-file-download'
+    ),
 ]

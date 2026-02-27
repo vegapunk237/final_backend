@@ -2,6 +2,63 @@
 from django.db import models
 from django.core.validators import EmailValidator
 import json
+import os
+import uuid
+
+def course_file_upload_path(instance, filename):
+    ext = filename.rsplit('.', 1)[-1].lower()
+    unique_name = f"{uuid.uuid4().hex}_{filename}"
+    return f"course_files/{instance.appointment_id}/{unique_name}"
+
+
+class CourseFile(models.Model):
+    FILE_TYPE_CHOICES = [
+        ('pdf',   'PDF'),
+        ('image', 'Image'),
+        ('word',  'Word'),
+        ('excel', 'Excel'),
+        ('other', 'Autre'),
+    ]
+    UPLOADED_BY_CHOICES = [
+        ('parent',  'Parent / Élève'),
+        ('teacher', 'Enseignant'),
+    ]
+
+    appointment     = models.ForeignKey(
+        'Appointment',                      # ← adapte au nom exact de ton modèle RDV
+        on_delete=models.CASCADE,
+        related_name='course_files'
+    )
+    file            = models.FileField(upload_to=course_file_upload_path)
+    original_name   = models.CharField(max_length=255)
+    file_type       = models.CharField(max_length=10, choices=FILE_TYPE_CHOICES, default='other')
+    file_size       = models.PositiveIntegerField(help_text="Taille en octets")
+    uploaded_by     = models.CharField(max_length=10, choices=UPLOADED_BY_CHOICES)
+    uploader_name   = models.CharField(max_length=150, blank=True)
+    description     = models.CharField(max_length=300, blank=True)
+    uploaded_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+        verbose_name = "Fichier de cours"
+        verbose_name_plural = "Fichiers de cours"
+
+    def __str__(self):
+        return f"{self.original_name} ({self.appointment_id})"
+
+    def get_file_type(self, filename):
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        if ext == 'pdf':            return 'pdf'
+        if ext in ('jpg','jpeg','png','gif','webp','heic'): return 'image'
+        if ext in ('doc','docx'):   return 'word'
+        if ext in ('xls','xlsx'):   return 'excel'
+        return 'other'
+
+    def save(self, *args, **kwargs):
+        if not self.file_type or self.file_type == 'other':
+            self.file_type = self.get_file_type(self.original_name)
+        super().save(*args, **kwargs)
+
 
 class TeacherRequest(models.Model):
     STATUS_CHOICES = [
