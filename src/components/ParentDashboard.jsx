@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { ZegoUIKitPrebuilt } from '@zegocloud/zego-uikit-prebuilt';
 
-const API_URL = 'https://dollar5665.pythonanywhere.com/api';
+const API_URL = 'http://127.0.0.1:8000/api';
 
-
-// ─── PARENT DASHBOARD ─────────────────────────────────────────────────────────
 const ParentDashboard = ({ navigate, user, onLogout }) => {
   const [activeTab, setActiveTab]               = useState('planned');
   const [selectedCourse, setSelectedCourse]     = useState(null);
@@ -15,19 +13,20 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showCancelModal, setShowCancelModal]         = useState(false);
 
-
-  const [plannedCourses, setPlannedCourses]   = useState([]);
-  const [loadingCourses, setLoadingCourses]   = useState(true);
-  const [modifyData, setModifyData]           = useState({ subject: '', childName: '', notes: '' });
-  const [rescheduleData, setRescheduleData]   = useState({ date: '', time: '', reason: '' });
+  const [plannedCourses, setPlannedCourses]     = useState([]);
+  const [completedCourses, setCompletedCourses] = useState([]);   // ← API
+  const [loadingCourses, setLoadingCourses]     = useState(true);
+  const [loadingCompleted, setLoadingCompleted] = useState(true);
+  const [modifyData, setModifyData]             = useState({ subject: '', childName: '', notes: '' });
+  const [rescheduleData, setRescheduleData]     = useState({ date: '', time: '', reason: '' });
   const zegoContainerRef = useRef(null);
 
   // ── Fichiers de cours ─────────────────────────────────────────────────────
-  const [courseFiles, setCourseFiles]           = useState({});   // { [courseId]: [...files] }
-  const [filesLoading, setFilesLoading]         = useState({});   // { [courseId]: bool }
-  const [uploadingFile, setUploadingFile]       = useState({});   // { [courseId]: bool }
-  const [uploadDesc, setUploadDesc]             = useState('');
-  const [expandedFiles, setExpandedFiles]       = useState({});   // { [courseId]: bool }
+  const [courseFiles, setCourseFiles]   = useState({});
+  const [filesLoading, setFilesLoading] = useState({});
+  const [uploadingFile, setUploadingFile] = useState({});
+  const [uploadDesc, setUploadDesc]     = useState('');
+  const [expandedFiles, setExpandedFiles] = useState({});
   const fileInputRef = useRef(null);
 
   const ALLOWED_TYPES = {
@@ -37,18 +36,66 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
     'image/gif':                                                        { icon: '🖼️', label: 'Image', color: '#3b82f6' },
     'image/webp':                                                       { icon: '🖼️', label: 'Image', color: '#3b82f6' },
     'application/msword':                                               { icon: '📝', label: 'Word',  color: '#2563eb' },
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document':{ icon: '📝', label: 'Word',  color: '#2563eb' },
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': { icon: '📝', label: 'Word', color: '#2563eb' },
     'application/vnd.ms-excel':                                         { icon: '📊', label: 'Excel', color: '#16a34a' },
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':{ icon: '📊', label: 'Excel', color: '#16a34a' },
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { icon: '📊', label: 'Excel', color: '#16a34a' },
   };
 
+  // ── Messages ──────────────────────────────────────────────────────────────
+  const [messages, setMessages]             = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [replyingTo, setReplyingTo]         = useState(null);   // id du message
+  const [replyContent, setReplyContent]     = useState('');
+  const [newMsgContent, setNewMsgContent]   = useState('');
+  const [showCompose, setShowCompose]       = useState(false);
+  const [sendingMsg, setSendingMsg]         = useState(false);
+
+  const fetchMessages = async () => {
+    if (!user?.id) return;
+    setMessagesLoading(true);
+    try {
+      const res  = await fetch(`${API_URL}/messages/?user_type=parent&user_id=${user.id}`);
+      const data = await res.json();
+      if (data.success) setMessages(data.data);
+    } catch(e) { console.error('Erreur messages:', e); }
+    finally { setMessagesLoading(false); }
+  };
+
+  const sendMessage = async (content, parentMessageId = null) => {
+    if (!content.trim()) return;
+    setSendingMsg(true);
+    try {
+      const res = await fetch(`${API_URL}/messages/`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          senderType:      'parent',
+          senderId:        user.id,
+          senderName:      user.name || 'Parent',
+          content:         content.trim(),
+          parentMessageId: parentMessageId || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchMessages();
+        setNewMsgContent('');
+        setReplyContent('');
+        setShowCompose(false);
+        setReplyingTo(null);
+      } else { alert('❌ ' + data.message); }
+    } catch(e) { alert('❌ Erreur de connexion'); }
+    finally { setSendingMsg(false); }
+  };
+
+  // ── Fichiers helpers ──────────────────────────────────────────────────────
   const fetchCourseFiles = async (courseId) => {
     setFilesLoading(prev => ({ ...prev, [courseId]: true }));
     try {
       const res  = await fetch(`${API_URL}/appointments/${courseId}/files/`);
       const data = await res.json();
       if (data.success) setCourseFiles(prev => ({ ...prev, [courseId]: data.data }));
-    } catch(e) { console.error('Erreur chargement fichiers:', e); }
+    } catch(e) { console.error('Erreur fichiers:', e); }
     finally { setFilesLoading(prev => ({ ...prev, [courseId]: false })); }
   };
 
@@ -63,13 +110,10 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
   const handleFileUpload = async (courseId, file) => {
     if (!file) return;
     if (!ALLOWED_TYPES[file.type]) {
-      alert('❌ Type de fichier non autorisé.\nFormats acceptés : PDF, images (JPG/PNG/GIF/WEBP), Word (.doc/.docx), Excel (.xls/.xlsx)');
+      alert('❌ Type de fichier non autorisé.\nFormats acceptés : PDF, images, Word, Excel');
       return;
     }
-    if (file.size > 20 * 1024 * 1024) {
-      alert('❌ Fichier trop lourd (max 20 MB)');
-      return;
-    }
+    if (file.size > 20 * 1024 * 1024) { alert('❌ Fichier trop lourd (max 20 MB)'); return; }
     setUploadingFile(prev => ({ ...prev, [courseId]: true }));
     try {
       const formData = new FormData();
@@ -103,10 +147,9 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' Ko';
     return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
   };
-
   const getFileInfo = (mimeOrType) => ALLOWED_TYPES[mimeOrType] || { icon: '📎', label: 'Fichier', color: '#9ca3af' };
 
-  // ─── ZegoCloud ─────────────────────────────────────────────────────────────
+  // ── ZegoCloud ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!showVideoConference || !selectedCourse || !zegoContainerRef.current) return;
     const appID        = parseInt(import.meta.env.VITE_ZEGO_APP_ID);
@@ -117,17 +160,17 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
     const kitToken     = ZegoUIKitPrebuilt.generateKitTokenForTest(appID, serverSecret, roomID, userID, userName);
     const zp           = ZegoUIKitPrebuilt.create(kitToken);
     zp.joinRoom({
-      container:               zegoContainerRef.current,
-      scenario:                { mode: ZegoUIKitPrebuilt.GroupCall },
+      container: zegoContainerRef.current,
+      scenario:  { mode: ZegoUIKitPrebuilt.GroupCall },
       showScreenSharingButton: true,
-      showTextChat:            true,
-      showUserList:            true,
-      onLeaveRoom:             () => { setShowVideoConference(false); },
+      showTextChat:  true,
+      showUserList:  true,
+      onLeaveRoom:   () => setShowVideoConference(false),
     });
-    return () => { zp.destroy(); };
+    return () => zp.destroy();
   }, [showVideoConference, selectedCourse]);
 
-  // ─── Chargement RDV ──────────────────────────────────────────────────────
+  // ── Chargement RDV planifiés ──────────────────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
     const fetchPlannedCourses = async () => {
@@ -155,25 +198,46 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
             status:        a.status,
           })));
         }
-      } catch (err) {
-        console.error('❌ Erreur:', err);
-      } finally {
-        setLoadingCourses(false);
-      }
+      } catch (err) { console.error('❌ Erreur:', err); }
+      finally { setLoadingCourses(false); }
     };
     fetchPlannedCourses();
   }, [user]);
 
-  const [completedCourses] = useState([
-    { id: 4, subject: 'Mathématiques', teacher: 'Prof. Jean Martin', teacherAvatar: '👨‍🏫', date: '2025-12-01', time: '14:00', duration: '1h30', childName: 'Sophie', evaluation: { theme: 'LES DROITES PERPENDICULAIRES (maths) et les circuits électriques en physique', themeStatus: 'acquired', summary: "L'étudiant utilise avec détermination son énergie et ses ressources personnelles dans le but d'accroître son niveau.", criteria: [{ name: 'Motivation', value: 50, color: '#ef4444' }, { name: 'Compréhension', value: 50, color: '#3b82f6' }, { name: 'Maîtrise', value: 50, color: '#f59e0b' }, { name: 'Autonomie', value: 50, color: '#8b5cf6' }] } },
-    { id: 5, subject: 'Français', teacher: 'Prof. Sophie Dubois', teacherAvatar: '👩‍🏫', date: '2025-11-28', time: '16:00', duration: '1h', childName: 'Marc', evaluation: { theme: "L'analyse de texte et la rédaction", themeStatus: 'in-progress', summary: "L'étudiant progresse bien dans la compréhension des textes littéraires.", criteria: [{ name: 'Motivation', value: 70, color: '#ef4444' }, { name: 'Compréhension', value: 65, color: '#3b82f6' }, { name: 'Maîtrise', value: 60, color: '#f59e0b' }, { name: 'Autonomie', value: 55, color: '#8b5cf6' }] } }
-  ]);
+  // ── Chargement cours TERMINÉS depuis l'API ────────────────────────────────
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchCompleted = async () => {
+      setLoadingCompleted(true);
+      try {
+        const res  = await fetch(`${API_URL}/appointments/`);
+        const data = await res.json();
+        if (data.success) {
+          const done = (data.data || []).filter(a =>
+            String(a.parentId) === String(user.id) && a.status === 'completed'
+          );
+          setCompletedCourses(done.map(a => ({
+            id:            a.id,
+            subject:       a.subject,
+            teacher:       a.assignedTeacher || 'Enseignant',
+            teacherAvatar: '👨‍🏫',
+            date:          a.preferredDate,
+            time:          a.preferredTime?.slice(0, 5) || '00:00',
+            duration:      `${a.duration}h`,
+            childName:     a.studentName,
+            evaluation:    null,   // à remplir si l'API retourne les évaluations
+          })));
+        }
+      } catch (err) { console.error('❌ Erreur cours terminés:', err); }
+      finally { setLoadingCompleted(false); }
+    };
+    fetchCompleted();
+  }, [user]);
 
-  const [messages] = useState([
-    { id: 1, sender: 'Prof. Jean Martin',   avatar: '👨‍🏫', message: "Bonjour, Sophie a fait d'excellents progrès cette semaine !", time: '14:30', date: '2025-12-10', unread: true },
-    { id: 2, sender: 'Prof. Sophie Dubois', avatar: '👩‍🏫', message: 'Le prochain cours sera sur la poésie romantique.',              time: '10:15', date: '2025-12-09', unread: false }
-  ]);
+  // ── Chargement messages ───────────────────────────────────────────────────
+  useEffect(() => { if (user?.id) fetchMessages(); }, [user]);
 
+  // ── Handlers cours ────────────────────────────────────────────────────────
   const handleJoinVideo        = (course) => { setSelectedCourse(course); setShowVideoConference(true); };
   const handleModifyCourse     = (course) => { setSelectedCourse(course); setModifyData({ subject: course.subject, childName: course.childName, notes: '' }); setShowModifyModal(true); };
   const handleRescheduleCourse = (course) => { setSelectedCourse(course); setRescheduleData({ date: course.date, time: course.time, reason: '' }); setShowRescheduleModal(true); };
@@ -185,12 +249,12 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
   const getThemeStatusLabel = (s) => ({ 'not-acquired': 'Non acquise', 'in-progress': "En cours d'acquisition", 'acquired': 'Acquis' }[s] || s);
   const getThemeStatusStyle = (s) => ({ 'not-acquired': { bg: 'rgba(239,68,68,0.1)', color: '#ef4444' }, 'in-progress': { bg: 'rgba(251,191,36,0.1)', color: '#fbbf24' }, 'acquired': { bg: 'rgba(34,197,94,0.1)', color: '#22c55e' } }[s] || { bg: 'rgba(251,191,36,0.1)', color: '#fbbf24' });
 
-
-  // ─── Ouvrir tableau blanc dans un nouvel onglet ───────────────────────────
   const openWhiteboardTab = (course) => {
-    const name = encodeURIComponent(`${course.subject} — ${course.teacher || course.studentName || ''}`);
+    const name = encodeURIComponent(`${course.subject} — ${course.teacher || ''}`);
     window.open(`/whiteboard.html?course=${name}`, '_blank', 'width=1200,height=750,toolbar=0,menubar=0');
   };
+
+  const unreadCount = messages.filter(m => !m.is_read && m.sender_type === 'teacher').length;
 
   return (
     <div style={styles.container}>
@@ -224,7 +288,12 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
       {/* STATS */}
       <section style={styles.statsSection}>
         <div style={styles.statsGrid}>
-          {[{ icon: '📅', label: 'Cours planifiés', value: plannedCourses.length }, { icon: '✅', label: 'Cours terminés', value: completedCourses.length }, { icon: '💬', label: 'Messages', value: messages.filter(m => m.unread).length }, { icon: '👨‍🏫', label: 'Enseignants', value: 4 }].map((s, i) => (
+          {[
+            { icon: '📅', label: 'Cours planifiés',  value: plannedCourses.length },
+            { icon: '✅', label: 'Cours terminés',   value: completedCourses.length },
+            { icon: '💬', label: 'Messages non lus', value: unreadCount },
+            { icon: '👨‍🏫', label: 'Enseignants',    value: 4 },
+          ].map((s, i) => (
             <div key={i} style={styles.statCard}>
               <div style={styles.statIcon}>{s.icon}</div>
               <div><p style={styles.statLabel}>{s.label}</p><p style={styles.statValue}>{s.value}</p></div>
@@ -236,11 +305,15 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
       {/* ONGLETS */}
       <section style={styles.tabsContainer}>
         <div style={styles.tabs}>
-          {[{ key: 'planned', icon: '📅', label: 'Cours planifiés', badge: plannedCourses.length }, { key: 'completed', icon: '✅', label: 'Cours terminés', badge: completedCourses.length }, { key: 'chat', icon: '💬', label: 'Messages', notif: messages.filter(m => m.unread).length }].map(({ key, icon, label, badge, notif }) => (
+          {[
+            { key: 'planned',   icon: '📅', label: 'Cours planifiés', badge: plannedCourses.length },
+            { key: 'completed', icon: '✅', label: 'Cours terminés',  badge: completedCourses.length },
+            { key: 'chat',      icon: '💬', label: 'Messages',        notif: unreadCount },
+          ].map(({ key, icon, label, badge, notif }) => (
             <button key={key} onClick={() => setActiveTab(key)} style={{ ...styles.tab, ...(activeTab === key ? styles.tabActive : {}) }}>
               <span>{icon}</span><span>{label}</span>
               {badge !== undefined && <span style={styles.tabBadge}>{badge}</span>}
-              {notif > 0 && <span style={styles.tabNotification}>{notif}</span>}
+              {notif > 0             && <span style={styles.tabNotification}>{notif}</span>}
             </button>
           ))}
         </div>
@@ -249,6 +322,7 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
       {/* CONTENU */}
       <section style={styles.mainContent}>
 
+        {/* ── ONGLET COURS PLANIFIÉS ── */}
         {activeTab === 'planned' && (
           <div>
             <h3 style={styles.sectionTitle}>📅 Prochains cours</h3>
@@ -279,7 +353,7 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
                   </div>
                   <div style={styles.courseActions}>
                     <button onClick={() => handleJoinVideo(course)} style={{ ...styles.videoButton, ...styles.videoButtonActive }}>📹 Rejoindre la visio</button>
-                    <button onClick={() => navigate('chat', { teacherId: course.teacher })} style={styles.chatButton}>💬 Contacter</button>
+                    <button onClick={() => { setActiveTab('chat'); }} style={styles.chatButton}>💬 Contacter</button>
                   </div>
                   <div style={styles.courseManagement}>
                     <button onClick={() => handleModifyCourse(course)}     style={styles.manageButton}>✏️ Modifier</button>
@@ -287,7 +361,7 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
                     <button onClick={() => handleCancelCourse(course)}     style={styles.cancelButton}>❌ Annuler</button>
                   </div>
 
-                  {/* ── SECTION FICHIERS DU COURS ── */}
+                  {/* ── FICHIERS DU COURS ── */}
                   <div style={styles.filesSection}>
                     <button onClick={() => toggleFiles(course.id)} style={styles.filesToggleBtn}>
                       <span>📎 Documents du cours</span>
@@ -296,10 +370,8 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
                       </span>
                       <span style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: expandedFiles[course.id] ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
                     </button>
-
                     {expandedFiles[course.id] && (
                       <div style={styles.filesPanel}>
-                        {/* Zone d'upload */}
                         <div style={styles.uploadZone}
                           onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#FDD835'; }}
                           onDragLeave={e => { e.currentTarget.style.borderColor = 'rgba(253,216,53,0.3)'; }}
@@ -307,26 +379,20 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
                         >
                           <span style={{ fontSize: '28px' }}>📤</span>
                           <p style={styles.uploadZoneText}>Glissez un fichier ici ou</p>
-                          <input type="file"
-                            accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx"
+                          <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx"
                             style={{ display: 'none' }} id={`file-input-${course.id}`}
                             onChange={e => handleFileUpload(course.id, e.target.files[0])}
                           />
                           <label htmlFor={`file-input-${course.id}`} style={styles.uploadBtn}>
                             {uploadingFile[course.id] ? '⏳ Envoi en cours...' : '📁 Choisir un fichier'}
                           </label>
-                          <input
-                            type="text" placeholder="Description (optionnel)"
+                          <input type="text" placeholder="Description (optionnel)"
                             value={uploadDesc} onChange={e => setUploadDesc(e.target.value)}
                             style={styles.uploadDescInput}
                           />
-                          <p style={styles.uploadHint}>PDF • Images (JPG/PNG/GIF) • Word • Excel — max 20 Mo</p>
+                          <p style={styles.uploadHint}>PDF • Images • Word • Excel — max 20 Mo</p>
                         </div>
-
-                        {/* Liste des fichiers */}
-                        {filesLoading[course.id] && (
-                          <p style={{ textAlign: 'center', color: '#9ca3af', padding: '1rem' }}>⏳ Chargement...</p>
-                        )}
+                        {filesLoading[course.id] && <p style={{ textAlign: 'center', color: '#9ca3af', padding: '1rem' }}>⏳ Chargement...</p>}
                         {!filesLoading[course.id] && courseFiles[course.id]?.length === 0 && (
                           <p style={{ textAlign: 'center', color: '#6b7280', padding: '1rem', fontSize: '13px' }}>Aucun document partagé pour ce cours.</p>
                         )}
@@ -338,9 +404,7 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
                               <span style={{ fontSize: '22px', flexShrink: 0 }}>{fi.icon}</span>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <p style={{ ...styles.fileName, color: fi.color }}>{cf.original_name}</p>
-                                <p style={styles.fileMeta}>
-                                  {formatFileSize(cf.file_size)} • {cf.uploader_name || cf.uploaded_by} • {new Date(cf.uploaded_at).toLocaleDateString('fr-FR')}
-                                </p>
+                                <p style={styles.fileMeta}>{formatFileSize(cf.file_size)} • {cf.uploader_name || cf.uploaded_by} • {new Date(cf.uploaded_at).toLocaleDateString('fr-FR')}</p>
                                 {cf.description && <p style={styles.fileDesc}>{cf.description}</p>}
                               </div>
                               <div style={styles.fileActions}>
@@ -361,9 +425,17 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
           </div>
         )}
 
+        {/* ── ONGLET COURS TERMINÉS (données réelles) ── */}
         {activeTab === 'completed' && (
           <div>
             <h3 style={styles.sectionTitle}>✅ Historique des cours</h3>
+            {loadingCompleted && <p style={{ color: '#9ca3af', textAlign: 'center', padding: '2rem' }}>⏳ Chargement...</p>}
+            {!loadingCompleted && completedCourses.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>
+                <span style={{ fontSize: '3rem', display: 'block', marginBottom: '1rem' }}>📭</span>
+                <p>Aucun cours terminé pour l'instant.</p>
+              </div>
+            )}
             <div style={styles.coursesList}>
               {completedCourses.map((course) => (
                 <div key={course.id} style={styles.courseCard}>
@@ -377,63 +449,134 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
                   <div style={styles.courseDetails}>
                     <div style={styles.detailItem}><span>👶</span><span style={styles.detailText}>{course.childName}</span></div>
                     <div style={styles.detailItem}><span>📅</span><span style={styles.detailText}>{new Date(course.date).toLocaleDateString('fr-FR')}</span></div>
-                    <div style={styles.detailItem}><span>🕐</span><span style={styles.detailText}>{course.time} - {course.duration}</span></div>
+                    <div style={styles.detailItem}><span>🕐</span><span style={styles.detailText}>{course.time} — {course.duration}</span></div>
                   </div>
-                  <button onClick={() => { setSelectedCourse(course); setShowEvaluation(true); }} style={styles.evaluationButton}>📊 Voir l'appréciation du professeur</button>
+                  {course.evaluation && (
+                    <button onClick={() => { setSelectedCourse(course); setShowEvaluation(true); }} style={styles.evaluationButton}>
+                      📊 Voir l'appréciation du professeur
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
           </div>
         )}
 
+        {/* ── ONGLET MESSAGES ── */}
         {activeTab === 'chat' && (
           <div>
-            <h3 style={styles.sectionTitle}>💬 Messages des enseignants</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={styles.sectionTitle}>💬 Messages</h3>
+              <button onClick={() => setShowCompose(true)} style={styles.newMessageButton}>
+                ✉️ Nouveau message
+              </button>
+            </div>
+
+            {/* Formulaire nouveau message */}
+            {showCompose && (
+              <div style={styles.composeBox}>
+                <p style={styles.composeTitle}>✉️ Envoyer un message aux enseignants</p>
+                <textarea
+                  placeholder="Votre message (visible par tous les enseignants)..."
+                  value={newMsgContent}
+                  onChange={e => setNewMsgContent(e.target.value)}
+                  style={styles.composeTextarea}
+                  rows={4}
+                />
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button onClick={() => { setShowCompose(false); setNewMsgContent(''); }} style={styles.cancelModalBtn}>Annuler</button>
+                  <button onClick={() => sendMessage(newMsgContent)} disabled={sendingMsg || !newMsgContent.trim()} style={styles.confirmBtn}>
+                    {sendingMsg ? '⏳ Envoi...' : '📤 Envoyer'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {messagesLoading && <p style={{ color: '#9ca3af', textAlign: 'center', padding: '2rem' }}>⏳ Chargement...</p>}
+
+            {!messagesLoading && messages.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>
+                <span style={{ fontSize: '3rem', display: 'block', marginBottom: '1rem' }}>💬</span>
+                <p>Aucun message pour l'instant. Envoyez votre premier message !</p>
+              </div>
+            )}
+
             <div style={styles.messagesList}>
               {messages.map((msg) => (
-                <div key={msg.id} style={{ ...styles.messageCard, ...(msg.unread ? styles.messageCardUnread : {}) }}>
+                <div key={msg.id} style={{ ...styles.messageCard, ...(!msg.is_read && msg.sender_type === 'teacher' ? styles.messageCardUnread : {}) }}>
                   <div style={styles.messageHeader}>
-                    <div style={styles.messageAuthor}><span style={styles.messageAvatar}>{msg.avatar}</span><div><p style={styles.messageSender}>{msg.sender}</p><p style={styles.messageTime}>{new Date(msg.date).toLocaleDateString('fr-FR')} à {msg.time}</p></div></div>
-                    {msg.unread && <span style={styles.unreadDot} />}
+                    <div style={styles.messageAuthor}>
+                      <span style={styles.messageAvatar}>{msg.sender_type === 'teacher' ? '👨‍🏫' : '👤'}</span>
+                      <div>
+                        <p style={styles.messageSender}>{msg.sender_name}</p>
+                        <p style={styles.messageTime}>{new Date(msg.created_at).toLocaleDateString('fr-FR')} à {new Date(msg.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                      </div>
+                    </div>
+                    {!msg.is_read && msg.sender_type === 'teacher' && <span style={styles.unreadDot} />}
                   </div>
-                  <p style={styles.messageText}>{msg.message}</p>
-                  <button style={styles.replyButton}>Répondre →</button>
+                  <p style={styles.messageText}>{msg.content}</p>
+
+                  {/* Réponses */}
+                  {msg.replies && msg.replies.length > 0 && (
+                    <div style={styles.repliesContainer}>
+                      {msg.replies.map(reply => (
+                        <div key={reply.id} style={styles.replyCard}>
+                          <div style={styles.messageAuthor}>
+                            <span style={styles.messageAvatar}>{reply.sender_type === 'teacher' ? '👨‍🏫' : '👤'}</span>
+                            <div>
+                              <p style={{ ...styles.messageSender, fontSize: '13px' }}>{reply.sender_name}</p>
+                              <p style={styles.messageTime}>{new Date(reply.created_at).toLocaleDateString('fr-FR')} à {new Date(reply.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                            </div>
+                          </div>
+                          <p style={{ ...styles.messageText, fontSize: '13px' }}>{reply.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Formulaire de réponse */}
+                  {replyingTo === msg.id ? (
+                    <div style={{ marginTop: '10px' }}>
+                      <textarea
+                        placeholder="Votre réponse..."
+                        value={replyContent}
+                        onChange={e => setReplyContent(e.target.value)}
+                        style={{ ...styles.composeTextarea, minHeight: '70px' }}
+                        rows={2}
+                      />
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '6px' }}>
+                        <button onClick={() => { setReplyingTo(null); setReplyContent(''); }} style={styles.cancelModalBtn}>Annuler</button>
+                        <button onClick={() => sendMessage(replyContent, msg.id)} disabled={sendingMsg || !replyContent.trim()} style={styles.confirmBtn}>
+                          {sendingMsg ? '⏳...' : '📤 Répondre'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setReplyingTo(msg.id); setReplyContent(''); }} style={styles.replyButton}>
+                      ↩️ Répondre
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
-            <button style={styles.newMessageButton}>✉️ Nouveau message</button>
           </div>
         )}
       </section>
 
-      {/* ══════════════════════════════════════════════════════
-          MODAL VISIOCONFÉRENCE + TABLEAU BLANC INTÉGRÉ
-      ══════════════════════════════════════════════════════ */}
+      {/* MODAL VISIOCONFÉRENCE */}
       {showVideoConference && selectedCourse && (
         <div style={styles.videoModal}>
           <div style={styles.videoContainer}>
-
-            {/* Header visio */}
             <div style={styles.videoHeader}>
               <div style={{ flex: 1 }}>
                 <h3 style={styles.videoTitle}>{selectedCourse.subject} — {selectedCourse.teacher}</h3>
                 <p style={styles.videoSubtitle}>Élève : {selectedCourse.childName} | Durée : {selectedCourse.duration}</p>
               </div>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                {/* Bouton pour afficher/masquer le tableau */}
-                <button
-                  onClick={() => openWhiteboardTab(selectedCourse)}
-                  style={styles.wbToggleBtn}
-                  title="Ouvre le tableau dans un nouvel onglet — partagez cet onglet dans la visio"
-                >
-                  🖊️ Tableau blanc ↗
-                </button>
+                <button onClick={() => openWhiteboardTab(selectedCourse)} style={styles.wbToggleBtn}>🖊️ Tableau blanc ↗</button>
                 <button onClick={() => setShowVideoConference(false)} style={styles.videoCloseBtn}>✕</button>
               </div>
             </div>
-
-            
-            {/* Corps : visio plein écran */}
             <div style={{ flex: 1, position: 'relative', background: '#0a0a0a', overflow: 'hidden' }}>
               <div ref={zegoContainerRef} style={{ width: '100%', height: '100%' }} />
             </div>
@@ -441,7 +584,7 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
         </div>
       )}
 
-      {/* ══ MODAL MODIFICATION ══ */}
+      {/* MODAL MODIFICATION */}
       {showModifyModal && selectedCourse && (
         <div style={styles.modalOverlay} onClick={() => setShowModifyModal(false)}>
           <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
@@ -456,7 +599,7 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
         </div>
       )}
 
-      {/* ══ MODAL REPORT ══ */}
+      {/* MODAL REPORT */}
       {showRescheduleModal && selectedCourse && (
         <div style={styles.modalOverlay} onClick={() => setShowRescheduleModal(false)}>
           <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
@@ -475,7 +618,7 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
         </div>
       )}
 
-      {/* ══ MODAL ANNULATION ══ */}
+      {/* MODAL ANNULATION */}
       {showCancelModal && selectedCourse && (
         <div style={styles.modalOverlay} onClick={() => setShowCancelModal(false)}>
           <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
@@ -495,8 +638,8 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
         </div>
       )}
 
-      {/* ══ MODAL ÉVALUATION ══ */}
-      {showEvaluation && selectedCourse && (
+      {/* MODAL ÉVALUATION */}
+      {showEvaluation && selectedCourse?.evaluation && (
         <div style={styles.modalOverlay} onClick={() => setShowEvaluation(false)}>
           <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
             <div style={styles.modalHeader}><h3 style={styles.modalTitle}>📊 Évaluation du cours</h3><button onClick={() => setShowEvaluation(false)} style={styles.modalClose}>✕</button></div>
@@ -506,22 +649,7 @@ const ParentDashboard = ({ navigate, user, onLogout }) => {
                 <p style={{ fontSize: '15px', color: '#a78bfa', margin: '0 0 8px 0' }}>Par {selectedCourse.teacher}</p>
                 <p style={{ fontSize: '13px', color: '#9ca3af', margin: 0 }}>{new Date(selectedCourse.date).toLocaleDateString('fr-FR')} — {selectedCourse.childName}</p>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', marginBottom: '25px', border: '1px solid rgba(253,216,53,0.15)' }}>
-                <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#FDD835', margin: '0 0 15px 0' }}>📚 Thématique</h4>
-                <p style={{ fontSize: '15px', color: '#e5e7eb', lineHeight: '1.6', padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', marginBottom: '15px' }}>{selectedCourse.evaluation.theme}</p>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  {['not-acquired', 'in-progress', 'acquired'].map((s) => {
-                    const isSel = selectedCourse.evaluation.themeStatus === s;
-                    const ss    = getThemeStatusStyle(s);
-                    return <div key={s} style={{ flex: 1, padding: '10px', borderRadius: '10px', background: isSel ? ss.bg : 'rgba(255,255,255,0.03)', border: `1px solid ${isSel ? ss.color : 'rgba(255,255,255,0.1)'}`, color: isSel ? ss.color : '#6b7280', fontSize: '12px', fontWeight: '600', textAlign: 'center' }}>{isSel && '✓ '}{getThemeStatusLabel(s)}</div>;
-                  })}
-                </div>
-              </div>
-              <div style={{ background: 'rgba(59,130,246,0.1)', borderRadius: '12px', padding: '15px', border: '1px solid rgba(59,130,246,0.3)', marginBottom: '25px' }}>
-                <p style={{ fontSize: '13px', color: '#60a5fa', fontWeight: '600', marginBottom: '8px' }}>📝 Résumé</p>
-                <p style={{ fontSize: '14px', color: '#d1d5db', lineHeight: '1.6', margin: 0 }}>{selectedCourse.evaluation.summary}</p>
-              </div>
-              {selectedCourse.evaluation.criteria.map((c, i) => (
+              {selectedCourse.evaluation.criteria?.map((c, i) => (
                 <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '14px', padding: '18px', marginBottom: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
                     <span style={{ fontSize: '15px', fontWeight: '600', color: '#e5e7eb' }}>{c.name}</span>
@@ -597,18 +725,25 @@ const styles = {
   courseManagement: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginTop: '15px', paddingTop: '15px', borderTop: '1px solid rgba(253,216,53,0.15)' },
   manageButton:     { padding: '10px 12px', background: 'rgba(253,216,53,0.1)', border: '1px solid rgba(253,216,53,0.3)', borderRadius: '10px', color: '#FDD835', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' },
   cancelButton:     { padding: '10px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', color: '#fca5a5', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' },
-
-  // ─── Modal visio ───────────────────────────────────────────────────────────
-  videoModal:       { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '20px' },
-  videoContainer:   { background: '#1a1a2e', borderRadius: '20px', width: '100%', maxWidth: '1400px', height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid rgba(253,216,53,0.3)', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' },
-  videoHeader:      { padding: '16px 24px', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid rgba(253,216,53,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 },
-  videoTitle:       { fontSize: '18px', fontWeight: 'bold', color: '#FDD835', margin: '0 0 4px 0' },
-  videoSubtitle:    { fontSize: '13px', color: '#9ca3af', margin: 0 },
-  videoCloseBtn:    { width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', color: '#fca5a5', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  wbToggleBtn:      { padding: '8px 16px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#d1d5db', fontSize: '14px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s' },
-  wbToggleBtnOn:    { background: 'rgba(253,216,53,0.2)', border: '1px solid rgba(253,216,53,0.5)', color: '#FDD835', boxShadow: '0 0 12px rgba(253,216,53,0.2)' },
-
-  // ── Fichiers de cours ──────────────────────────────────────────────────────
+  // Messages
+  messagesList:     { display: 'flex', flexDirection: 'column', gap: '20px' },
+  messageCard:      { background: 'rgba(255,255,255,0.08)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(253,216,53,0.15)' },
+  messageCardUnread:{ borderColor: 'rgba(253,216,53,0.4)', background: 'rgba(253,216,53,0.05)' },
+  messageHeader:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' },
+  messageAuthor:    { display: 'flex', alignItems: 'center', gap: '12px' },
+  messageAvatar:    { fontSize: '28px' },
+  messageSender:    { fontSize: '15px', fontWeight: '600', color: '#FDD835', margin: '0 0 3px 0' },
+  messageTime:      { fontSize: '12px', color: '#9ca3af', margin: 0 },
+  unreadDot:        { width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444', flexShrink: 0 },
+  messageText:      { fontSize: '14px', color: '#d1d5db', lineHeight: '1.6', marginBottom: '12px' },
+  replyButton:      { padding: '8px 18px', background: 'rgba(253,216,53,0.1)', border: '1px solid rgba(253,216,53,0.3)', borderRadius: '10px', color: '#FDD835', fontSize: '13px', fontWeight: '600', cursor: 'pointer' },
+  repliesContainer: { marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: '10px' },
+  replyCard:        { background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px 14px', borderLeft: '3px solid rgba(253,216,53,0.3)' },
+  newMessageButton: { padding: '12px 24px', background: 'linear-gradient(135deg, #FDD835, #FFC107)', border: 'none', borderRadius: '12px', color: '#1a1a2e', fontSize: '15px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' },
+  composeBox:       { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(253,216,53,0.3)', borderRadius: '16px', padding: '20px', marginBottom: '24px' },
+  composeTitle:     { fontSize: '16px', fontWeight: '600', color: '#FDD835', marginBottom: '12px' },
+  composeTextarea:  { width: '100%', minHeight: '90px', padding: '12px 16px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(253,216,53,0.3)', borderRadius: '10px', color: '#fff', fontSize: '14px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: '12px' },
+  // Fichiers
   filesSection:     { marginTop: '14px', borderTop: '1px solid rgba(253,216,53,0.15)', paddingTop: '14px' },
   filesToggleBtn:   { width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'rgba(253,216,53,0.07)', border: '1px solid rgba(253,216,53,0.2)', borderRadius: '10px', color: '#FDD835', fontSize: '14px', fontWeight: '600', cursor: 'pointer' },
   filesCount:       { background: 'rgba(253,216,53,0.15)', padding: '2px 10px', borderRadius: '20px', fontSize: '12px' },
@@ -625,8 +760,14 @@ const styles = {
   fileActions:      { display: 'flex', gap: '6px', flexShrink: 0 },
   downloadBtn:      { width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', fontSize: '14px', textDecoration: 'none', cursor: 'pointer' },
   deleteFileBtn:    { width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' },
-
-  // ─── Modals ────────────────────────────────────────────────────────────────
+  // Modals
+  videoModal:       { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '20px' },
+  videoContainer:   { background: '#1a1a2e', borderRadius: '20px', width: '100%', maxWidth: '1400px', height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid rgba(253,216,53,0.3)', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' },
+  videoHeader:      { padding: '16px 24px', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid rgba(253,216,53,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 },
+  videoTitle:       { fontSize: '18px', fontWeight: 'bold', color: '#FDD835', margin: '0 0 4px 0' },
+  videoSubtitle:    { fontSize: '13px', color: '#9ca3af', margin: 0 },
+  videoCloseBtn:    { width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', color: '#fca5a5', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  wbToggleBtn:      { padding: '8px 16px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#d1d5db', fontSize: '14px', fontWeight: '600', cursor: 'pointer' },
   modalOverlay:     { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' },
   modalContent:     { background: 'rgba(26,26,46,0.95)', backdropFilter: 'blur(20px)', borderRadius: '24px', maxWidth: '600px', width: '100%', maxHeight: '90vh', overflow: 'auto', border: '1px solid rgba(253,216,53,0.3)', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' },
   modalHeader:      { padding: '25px 30px', borderBottom: '1px solid rgba(253,216,53,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(139,58,147,0.15)' },
@@ -641,16 +782,4 @@ const styles = {
   cancelModalBtn:   { padding: '12px 24px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(253,216,53,0.3)', borderRadius: '12px', color: '#FDD835', fontSize: '15px', fontWeight: '600', cursor: 'pointer' },
   confirmBtn:       { padding: '12px 24px', background: 'linear-gradient(135deg, #FDD835, #FFC107)', border: 'none', borderRadius: '12px', color: '#1a1a2e', fontSize: '15px', fontWeight: '700', cursor: 'pointer' },
   dangerBtn:        { padding: '12px 24px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '15px', fontWeight: '700', cursor: 'pointer' },
-  messagesList:     { display: 'flex', flexDirection: 'column', gap: '20px' },
-  messageCard:      { background: 'rgba(255,255,255,0.08)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(253,216,53,0.15)' },
-  messageCardUnread:{ borderColor: 'rgba(253,216,53,0.4)', background: 'rgba(253,216,53,0.05)' },
-  messageHeader:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' },
-  messageAuthor:    { display: 'flex', alignItems: 'center', gap: '12px' },
-  messageAvatar:    { fontSize: '32px' },
-  messageSender:    { fontSize: '16px', fontWeight: '600', color: '#FDD835', margin: '0 0 4px 0' },
-  messageTime:      { fontSize: '12px', color: '#9ca3af', margin: 0 },
-  unreadDot:        { width: '12px', height: '12px', borderRadius: '50%', background: '#ef4444' },
-  messageText:      { fontSize: '14px', color: '#d1d5db', lineHeight: '1.6', marginBottom: '15px' },
-  replyButton:      { padding: '10px 20px', background: 'rgba(253,216,53,0.15)', border: '1px solid rgba(253,216,53,0.3)', borderRadius: '10px', color: '#FDD835', fontSize: '14px', fontWeight: '600', cursor: 'pointer' },
-  newMessageButton: { width: '100%', padding: '16px', marginTop: '20px', background: 'linear-gradient(135deg, #FDD835, #FFC107)', border: 'none', borderRadius: '12px', color: '#1a1a2e', fontSize: '16px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' },
 };

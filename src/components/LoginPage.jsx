@@ -160,23 +160,8 @@ const LoginPage = ({ navigate, onLogin }) => {
 
             {/* Demo Info */}
             <div style={styles.demoBox}>
-              <div style={styles.demoHeader}>
-                <span style={styles.demoIcon}>ℹ️</span>
-                <span style={styles.demoTitle}>Comptes de démonstration</span>
-              </div>
-              <ul style={styles.demoList}>
-                <li style={styles.demoItem}>
-                  <span style={styles.demoRole}>Parent:</span> parent@demo.com / parent123
-                </li>
-                <li style={styles.demoItem}>
-                  <span style={styles.demoRole}>Admin:</span> admin@demo.com / admin123
-                </li>
-                <li style={styles.demoItem}>
-                  <span style={styles.demoRole}>Enseignant:</span> Utilisez vos identifiants après validation
-                </li>
-              </ul>
               <p style={styles.demoNote}>
-                💡 Les enseignants doivent d'abord soumettre une candidature et être approuvés par l'admin
+                💡 Les enseignants et les parents doivent d'abord soumettre une candidature et être approuvés par l'admin
               </p>
             </div>
 

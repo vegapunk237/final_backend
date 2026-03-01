@@ -9,6 +9,7 @@ from .views import (
     
 )
 from . import views
+from .views import MessageListView, MessageMarkReadView
 
 router = DefaultRouter()
 router.register(r'teacher-requests', TeacherRequestViewSet, basename='teacher-request')
@@ -42,4 +43,9 @@ urlpatterns = [
         views.CourseFileDownloadView.as_view(),
         name='course-file-download'
     ),
+    path('messages/',            MessageListView.as_view(),    name='messages'),
+    path('messages/<int:message_id>/read/', MessageMarkReadView.as_view(), name='message-read'),
+
+    # AJOUTER cette ligne :
+    path('appointments/<int:appointment_id>/status/', views.AppointmentStatusView.as_view()),
 ]

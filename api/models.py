@@ -227,3 +227,33 @@ class Appointment(models.Model):
     
     def __str__(self):
         return f"{self.student_name} - {self.subject} ({self.preferred_date})"
+
+
+class Message(models.Model):
+    SENDER_TYPE_CHOICES = [
+        ('parent',  'Parent'),
+        ('teacher', 'Enseignant'),
+    ]
+
+    sender_type     = models.CharField(max_length=10, choices=SENDER_TYPE_CHOICES)
+    sender_id       = models.CharField(max_length=100)
+    sender_name     = models.CharField(max_length=255)
+    content         = models.TextField()
+    parent_message  = models.ForeignKey(
+        'self', null=True, blank=True,
+        on_delete=models.CASCADE, related_name='replies'
+    )
+    appointment     = models.ForeignKey(
+        'Appointment', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='messages'
+    )
+    is_read         = models.BooleanField(default=False)
+    created_at      = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+        verbose_name = "Message"
+        verbose_name_plural = "Messages"
+
+    def __str__(self):
+        return f"{self.sender_name} : {self.content[:60]}"

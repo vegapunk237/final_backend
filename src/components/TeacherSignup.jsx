@@ -807,8 +807,8 @@ const styles = {
   label: { fontSize: '14px', fontWeight: '600', color: '#FDD835', marginBottom: '6px' },
   input: {
     padding: '14px 16px', borderRadius: '12px',
-    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(253,216,53,0.3)',
-    color: '#fff', fontSize: '14px', outline: 'none',
+    background: '#rgb(109 109 108 / 87%);)', border: '1px solid rgba(253,216,53,0.3)',
+    color: 'black', fontSize: '14px', outline: 'none',
     transition: 'all 0.3s ease', width: '100%', boxSizing: 'border-box',
   },
   fileHint: { fontSize: '12px', color: '#9ca3af', marginTop: '5px' },

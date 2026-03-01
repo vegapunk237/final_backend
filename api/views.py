@@ -1,5 +1,6 @@
 # api/views.py
 import traceback
+from rest_framework.views import APIView
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
@@ -7,12 +8,15 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from .models import TeacherRequest, ParentRequest, Appointment
+from .models import Message
+from .serializers import MessageSerializer
 from .serializers import (
     TeacherRequestSerializer, 
     ParentRequestSerializer, 
     AppointmentSerializer
 )
-
+from django.http import JsonResponse
+from django.views import View  
 from django.core.mail import EmailMessage
 from django.conf import settings
 import base64
@@ -1063,3 +1067,127 @@ def health_check(request):
             'appointments': '/api/appointments/'
         }
     })
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+from django.db.models import Q
+# (ces imports existent déjà dans views.py, ne pas dupliquer)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class MessageListView(APIView):
+    """
+    GET  /api/messages/
+        ?user_type=teacher              → tous les messages (root)
+        ?user_type=parent&user_id=X    → messages envoyés par ce parent
+
+    POST /api/messages/
+        { senderType, senderId, senderName, content, parentMessageId? }
+    """
+
+    def get(self, request):
+        user_type = request.query_params.get('user_type', 'teacher')
+        user_id   = request.query_params.get('user_id')
+
+        # Récupérer uniquement les messages racine (pas les réponses)
+        qs = Message.objects.filter(parent_message=None)
+
+        # Un parent ne voit que ses propres messages
+        if user_type == 'parent' and user_id:
+            qs = qs.filter(sender_id=str(user_id), sender_type='parent')
+
+        result = []
+        for msg in qs.order_by('-created_at'):
+            data           = MessageSerializer(msg).data
+            data['replies'] = MessageSerializer(
+                msg.replies.all().order_by('created_at'), many=True
+            ).data
+            result.append(data)
+
+        return Response({'success': True, 'data': result})
+
+    def post(self, request):
+        d = request.data
+        try:
+            msg = Message(
+                sender_type  = d.get('senderType', ''),
+                sender_id    = str(d.get('senderId', '')),
+                sender_name  = d.get('senderName', ''),
+                content      = d.get('content', ''),
+            )
+            if d.get('parentMessageId'):
+                msg.parent_message_id = d['parentMessageId']
+            if d.get('appointmentId'):
+                msg.appointment_id = d['appointmentId']
+            msg.save()
+            return Response(
+                {'success': True, 'data': MessageSerializer(msg).data},
+                status=201
+            )
+        except Exception as e:
+            return Response({'success': False, 'message': str(e)}, status=500)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class MessageMarkReadView(APIView):
+    """
+    PUT /api/messages/<id>/read/
+    """
+    def put(self, request, message_id):
+        try:
+            msg         = Message.objects.get(id=message_id)
+            msg.is_read = True
+            msg.save()
+            return Response({'success': True})
+        except Message.DoesNotExist:
+            return Response({'success': False, 'message': 'Message introuvable'}, status=404)
+
+class AppointmentStatusView(View):
+    def put(self, request, appointment_id):
+        try:
+            import json
+            body = json.loads(request.body)
+            new_status = body.get('status')
+
+            VALID_STATUSES = ['pending', 'assigned', 'confirmed', 'completed', 'cancelled']
+            if new_status not in VALID_STATUSES:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Statut invalide : {new_status}'
+                }, status=400)
+
+            appointment = Appointment.objects.get(id=appointment_id)
+            appointment.status = new_status
+            appointment.save()
+
+            return JsonResponse({
+                'success': True,
+                'message': f'Statut mis à jour : {new_status}',
+                'data': { 'id': appointment.id, 'status': appointment.status }
+            })
+
+        except Appointment.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Rendez-vous introuvable'
+            }, status=404)
+
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            }, status=500)
+
+
+class AppointmentStatusView(APIView):
+    def put(self, request, appointment_id):
+        try:
+            new_status = request.data.get('status')
+            appointment = Appointment.objects.get(id=appointment_id)
+            appointment.status = new_status
+            appointment.save()
+            return Response({'success': True, 'data': {'id': appointment.id, 'status': appointment.status}})
+        except Appointment.DoesNotExist:
+            return Response({'success': False, 'message': 'Introuvable'}, status=404)
