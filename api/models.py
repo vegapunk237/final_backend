@@ -219,6 +219,15 @@ class Appointment(models.Model):
     # Métadonnées
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Date de création")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Date de mise à jour")
+
+    stripe_session_id = models.CharField(max_length=255, blank=True, null=True, verbose_name="Session Stripe")
+
+    payment_status = models.CharField(
+        max_length=20,
+        choices=[('pending', 'En attente'), ('paid', 'Payé'), ('failed', 'Échoué')],
+        default='pending',
+        verbose_name="Statut paiement"
+    )
     
     class Meta:
         verbose_name = "Rendez-vous"

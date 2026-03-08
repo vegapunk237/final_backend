@@ -48,4 +48,16 @@ urlpatterns = [
 
     # AJOUTER cette ligne :
     path('appointments/<int:appointment_id>/status/', views.AppointmentStatusView.as_view()),
+
+     # ── Rendez-vous ────────────────────────────────────────────────────────
+    path('appointments/',                          views.create_appointment,     name='create-appointment'),
+    path('appointments/<int:user_id>/',            views.get_appointments,       name='get-appointments'),
+    path('appointments/check-trial/<int:user_id>/',views.check_trial,            name='check-trial'),
+    path('appointments/<int:appointment_id>/cancel/', views.cancel_appointment,  name='cancel-appointment'),
+
+    # ── Paiements Stripe ───────────────────────────────────────────────────
+    path('payments/create-checkout-session/',      views.create_checkout_session, name='create-checkout-session'),
+    path('payments/webhook/',                      views.stripe_webhook,          name='stripe-webhook'),
+    path('payments/verify-session/<str:session_id>/', views.verify_session,      name='verify-session'),
+
 ]

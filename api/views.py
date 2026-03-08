@@ -1191,3 +1191,491 @@ class AppointmentStatusView(APIView):
             return Response({'success': True, 'data': {'id': appointment.id, 'status': appointment.status}})
         except Appointment.DoesNotExist:
             return Response({'success': False, 'message': 'Introuvable'}, status=404)
+
+
+import json
+import time
+import logging
+import stripe
+
+from django.http             import JsonResponse, HttpResponse
+from django.views.decorators.csrf   import csrf_exempt
+from django.views.decorators.http   import require_http_methods
+from django.utils            import timezone
+from django.conf             import settings
+from django.core.mail        import send_mail
+
+from .models import Appointment  # adapte selon ton app Django
+
+logger = logging.getLogger(__name__)
+
+from dotenv import load_dotenv
+import os
+import stripe
+
+load_dotenv()  # charge le fichier .env
+stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
+FRONTEND_URL    = getattr(settings, 'FRONTEND_URL', 'https://final-backend-swart.vercel.app')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. CRÉER UNE CHECKOUT SESSION STRIPE
+# POST /api/payments/create-checkout-session/
+# ─────────────────────────────────────────────────────────────────────────────
+@csrf_exempt
+@require_http_methods(["POST", "OPTIONS"])
+def create_checkout_session(request):
+    """
+    Reçoit les données du frontend, crée une Stripe Checkout Session,
+    met le RDV en statut 'pending_payment' et retourne l'URL de paiement.
+    """
+    # Gestion CORS preflight
+    if request.method == "OPTIONS":
+        response = HttpResponse()
+        response["Access-Control-Allow-Origin"]  = "*"
+        response["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Content-Type"
+        return response
+
+    try:
+        data = json.loads(request.body)
+
+        appointment_id  = data.get('appointmentId')
+        amount_cents    = int(data.get('amount', 0))       # déjà en centimes depuis le front
+        currency        = data.get('currency', 'eur')
+        description     = data.get('description', 'Cours KH Perfection')
+        customer_email  = data.get('customerEmail', '')
+        metadata        = data.get('metadata', {})
+        success_url     = data.get('successUrl')
+        cancel_url      = data.get('cancelUrl')
+
+        # ── Validation basique ─────────────────────────────────────────────
+        if not appointment_id:
+            return _json_error('appointmentId manquant', 400)
+        if amount_cents < 50:  # Stripe minimum : 0.50€
+            return _json_error('Montant invalide (minimum 0.50€)', 400)
+
+        # ── Récupérer le RDV et le passer en pending_payment ──────────────
+        try:
+            appointment = Appointment.objects.get(id=appointment_id)
+        except Appointment.DoesNotExist:
+            return _json_error('Réservation introuvable', 404)
+
+        if appointment.status == 'confirmed':
+            return _json_error('Cette réservation est déjà payée', 400)
+
+        # ── Créer la Checkout Session Stripe ──────────────────────────────
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency':     currency,
+                    'unit_amount':  amount_cents,
+                    'product_data': {
+                        'name':        description,
+                        'description': f"Élève : {metadata.get('studentName', '')} — Niveau {metadata.get('level', '')}",
+                    },
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+
+            # ✅ success_url et cancel_url construits depuis le frontend
+            # Le {CHECKOUT_SESSION_ID} est remplacé automatiquement par Stripe
+            success_url=success_url or f"{FRONTEND_URL}/payment-success?session_id={{CHECKOUT_SESSION_ID}}&appointment_id={appointment_id}",
+            cancel_url=cancel_url   or f"{FRONTEND_URL}/payment-cancel?appointment_id={appointment_id}",
+
+            customer_email=customer_email or None,
+
+            # ✅ Métadonnées : passées au webhook pour identifier la réservation
+            metadata={
+                'appointment_id': str(appointment_id),
+                'student_name':   metadata.get('studentName', ''),
+                'subject':        metadata.get('subject', ''),
+                'level':          metadata.get('level', ''),
+            },
+
+            # Session expire après 30 minutes
+            expires_at=int(time.time()) + 1800,
+
+            # Langue de l'interface Stripe
+            locale='fr',
+        )
+
+        # ── Sauvegarder le session_id Stripe dans le RDV ──────────────────
+        appointment.status            = 'pending_payment'
+        appointment.stripe_session_id = session.id
+        appointment.save(update_fields=['status', 'stripe_session_id'])
+
+        logger.info(f"[STRIPE] Session créée : {session.id} pour RDV #{appointment_id}")
+
+        return _json_ok({
+            'checkoutUrl': session.url,
+            'sessionId':   session.id,
+        })
+
+    except stripe.error.StripeError as e:
+        logger.error(f"[STRIPE] Erreur création session : {e}")
+        return _json_error(f'Erreur Stripe : {str(e)}', 500)
+    except Exception as e:
+        logger.error(f"[STRIPE] Erreur inattendue : {e}")
+        return _json_error('Erreur serveur interne', 500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. WEBHOOK STRIPE (cœur du système)
+# POST /api/payments/webhook/
+# ⚠️ Ce endpoint doit être EXEMPT de CSRF et de toute authentification
+# ─────────────────────────────────────────────────────────────────────────────
+@csrf_exempt
+@require_http_methods(["POST"])
+def stripe_webhook(request):
+    """
+    Reçoit les événements Stripe en temps réel.
+    C'est ICI que le cours est confirmé (et UNIQUEMENT ici).
+    Stripe appelle ce endpoint directement, pas le navigateur.
+    """
+    payload    = request.body
+    sig_header = request.META.get('HTTP_STRIPE_SIGNATURE', '')
+
+    # ── Vérifier la signature Stripe (sécurité critique) ──────────────────
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, WEBHOOK_SECRET
+        )
+    except stripe.error.SignatureVerificationError:
+        logger.warning("[WEBHOOK] Signature invalide — requête rejetée")
+        return HttpResponse(status=400)
+    except Exception as e:
+        logger.error(f"[WEBHOOK] Erreur construction event : {e}")
+        return HttpResponse(status=400)
+
+    event_type = event['type']
+    logger.info(f"[WEBHOOK] Événement reçu : {event_type}")
+
+    # ── checkout.session.completed → PAIEMENT RÉUSSI ──────────────────────
+    if event_type == 'checkout.session.completed':
+        session        = event['data']['object']
+        appointment_id = session.get('metadata', {}).get('appointment_id')
+        payment_intent = session.get('payment_intent', '')
+        customer_email = session.get('customer_email', '')
+
+        if not appointment_id:
+            logger.error("[WEBHOOK] appointment_id manquant dans les métadonnées")
+            return HttpResponse(status=200)  # On répond 200 pour éviter les retries Stripe
+
+        try:
+            appointment = Appointment.objects.get(id=appointment_id)
+
+            # ✅ CONFIRMER LE COURS
+            appointment.status             = 'confirmed'
+            appointment.stripe_payment_id  = payment_intent
+            appointment.paid_at            = timezone.now()
+            appointment.save(update_fields=['status', 'stripe_payment_id', 'paid_at'])
+
+            logger.info(f"[WEBHOOK] ✅ RDV #{appointment_id} confirmé — PaymentIntent: {payment_intent}")
+
+            # Optionnel : envoyer un email de confirmation
+            _send_confirmation_email(appointment)
+
+        except Appointment.DoesNotExist:
+            logger.error(f"[WEBHOOK] RDV #{appointment_id} introuvable")
+        except Exception as e:
+            logger.error(f"[WEBHOOK] Erreur confirmation RDV #{appointment_id} : {e}")
+
+    # ── checkout.session.expired → SESSION EXPIRÉE (30 min dépassées) ─────
+    elif event_type == 'checkout.session.expired':
+        session        = event['data']['object']
+        appointment_id = session.get('metadata', {}).get('appointment_id')
+
+        if appointment_id:
+            try:
+                Appointment.objects.filter(
+                    id=appointment_id,
+                    status='pending_payment'  # Ne toucher QUE les pending
+                ).update(status='cancelled')
+                logger.info(f"[WEBHOOK] RDV #{appointment_id} annulé (session expirée)")
+            except Exception as e:
+                logger.error(f"[WEBHOOK] Erreur annulation RDV #{appointment_id} : {e}")
+
+    # ── payment_intent.payment_failed → PAIEMENT ÉCHOUÉ ──────────────────
+    elif event_type == 'payment_intent.payment_failed':
+        payment_intent = event['data']['object']
+        pi_id          = payment_intent.get('id', '')
+        error_msg      = payment_intent.get('last_payment_error', {}).get('message', 'Inconnu')
+
+        logger.warning(f"[WEBHOOK] ❌ Paiement échoué — PI: {pi_id} — Erreur: {error_msg}")
+
+        # Chercher le RDV lié à ce PaymentIntent via la session Stripe
+        try:
+            sessions = stripe.checkout.Session.list(payment_intent=pi_id, limit=1)
+            if sessions.data:
+                appointment_id = sessions.data[0].get('metadata', {}).get('appointment_id')
+                if appointment_id:
+                    Appointment.objects.filter(
+                        id=appointment_id,
+                        status='pending_payment'
+                    ).update(status='payment_failed')
+                    logger.info(f"[WEBHOOK] RDV #{appointment_id} marqué payment_failed")
+        except Exception as e:
+            logger.error(f"[WEBHOOK] Erreur gestion échec paiement : {e}")
+
+    # ── Autres événements : on les ignore mais on répond 200 ──────────────
+    else:
+        logger.debug(f"[WEBHOOK] Événement ignoré : {event_type}")
+
+    # ✅ Toujours répondre 200 au webhook pour éviter les retries Stripe
+    return HttpResponse(status=200)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. VÉRIFIER UNE SESSION DE PAIEMENT
+# GET /api/payments/verify-session/<session_id>/
+# Appelé par la page payment-success du frontend pour confirmer l'affichage
+# ─────────────────────────────────────────────────────────────────────────────
+@require_http_methods(["GET"])
+def verify_session(request, session_id):
+    """
+    Vérifie côté backend si le paiement Stripe est validé.
+    Le frontend appelle cet endpoint sur la page de succès pour
+    s'assurer que le paiement est bien réel avant d'afficher la confirmation.
+    """
+    try:
+        # Récupérer la session Stripe
+        session = stripe.checkout.Session.retrieve(session_id)
+
+        # Récupérer le RDV lié
+        try:
+            appointment = Appointment.objects.get(stripe_session_id=session_id)
+        except Appointment.DoesNotExist:
+            return _json_error('Réservation introuvable pour cette session', 404)
+
+        payment_status = session.payment_status  # "paid" | "unpaid" | "no_payment_required"
+        is_paid        = payment_status == 'paid'
+
+        logger.info(f"[VERIFY] Session {session_id} — status: {payment_status} — RDV: {appointment.id}")
+
+        return _json_ok({
+            'paymentStatus':  payment_status,
+            'isPaid':         is_paid,
+            'appointmentId':  appointment.id,
+            'appointmentStatus': appointment.status,
+            # Données pour afficher la page de confirmation
+            'courseDetails': {
+                'studentName':   appointment.studentName,
+                'subject':       appointment.subject,
+                'level':         appointment.level,
+                'preferredDate': str(appointment.preferredDate),
+                'preferredTime': appointment.preferredTime,
+                'location':      appointment.location,
+                'totalAmount':   float(appointment.totalAmount),
+            },
+        })
+
+    except stripe.error.InvalidRequestError:
+        return _json_error('Session de paiement invalide ou expirée', 400)
+    except stripe.error.StripeError as e:
+        logger.error(f"[VERIFY] Erreur Stripe : {e}")
+        return _json_error('Erreur lors de la vérification du paiement', 500)
+    except Exception as e:
+        logger.error(f"[VERIFY] Erreur inattendue : {e}")
+        return _json_error('Erreur serveur', 500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. ANNULER UNE RÉSERVATION (retour depuis Stripe après abandon)
+# PATCH /api/appointments/<appointment_id>/cancel/
+# ─────────────────────────────────────────────────────────────────────────────
+@csrf_exempt
+@require_http_methods(["PATCH", "OPTIONS"])
+def cancel_appointment(request, appointment_id):
+    """
+    Annule un RDV en statut pending_payment quand l'utilisateur
+    clique "Annuler" sur la page Stripe et revient sur le site.
+    """
+    if request.method == "OPTIONS":
+        response = HttpResponse()
+        response["Access-Control-Allow-Origin"]  = "*"
+        response["Access-Control-Allow-Methods"] = "PATCH, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Content-Type"
+        return response
+
+    try:
+        appointment = Appointment.objects.get(id=appointment_id)
+
+        # ✅ Ne canceller que si le paiement n'est pas déjà confirmé
+        if appointment.status == 'confirmed':
+            return _json_error('Impossible d\'annuler un cours déjà payé', 400)
+
+        if appointment.status in ('pending_payment', 'pending'):
+            appointment.status = 'cancelled'
+            appointment.save(update_fields=['status'])
+            logger.info(f"[CANCEL] RDV #{appointment_id} annulé par l'utilisateur")
+            return _json_ok({'message': 'Réservation annulée'})
+
+        return _json_error(f'Statut actuel non annulable : {appointment.status}', 400)
+
+    except Appointment.DoesNotExist:
+        return _json_error('Réservation introuvable', 404)
+    except Exception as e:
+        logger.error(f"[CANCEL] Erreur : {e}")
+        return _json_error('Erreur serveur', 500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. ENDPOINTS EXISTANTS (inchangés, conservés pour compatibilité)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def check_trial(request, user_id):
+    """Vérifie si l'utilisateur a déjà utilisé son cours d'essai gratuit."""
+    try:
+        has_used_trial = Appointment.objects.filter(
+            parentId=user_id,
+            isTrialCourse=True,
+        ).exists()
+
+        return _json_ok({'hasUsedTrial': has_used_trial})
+    except Exception as e:
+        logger.error(f"[CHECK_TRIAL] Erreur : {e}")
+        return _json_error('Erreur serveur', 500)
+
+
+@csrf_exempt
+@require_http_methods(["POST", "OPTIONS"])
+def create_appointment(request):
+    """
+    Crée une nouvelle réservation.
+    - Cours gratuit     → status: 'pending'          (confirmation immédiate)
+    - Cours payant      → status: 'pending_payment'  (en attente Stripe)
+    """
+    if request.method == "OPTIONS":
+        response = HttpResponse()
+        response["Access-Control-Allow-Origin"]  = "*"
+        response["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Content-Type"
+        return response
+
+    try:
+        data = json.loads(request.body)
+
+        # ── Validation des champs obligatoires ────────────────────────────
+        required = ['studentName', 'subject', 'level', 'preferredDate', 'preferredTime']
+        for field in required:
+            if not data.get(field):
+                return _json_error(f'Champ obligatoire manquant : {field}', 400)
+
+        is_trial = data.get('isTrialCourse', False)
+
+        # ── Vérifier qu'on ne crée pas 2 cours d'essai ───────────────────
+        if is_trial:
+            parent_id = data.get('parentId')
+            if parent_id and Appointment.objects.filter(parentId=parent_id, isTrialCourse=True).exists():
+                return _json_error('Vous avez déjà utilisé votre cours d\'essai gratuit', 400)
+
+        # ── Créer le RDV ──────────────────────────────────────────────────
+        appointment = Appointment.objects.create(
+            parentId      = data.get('parentId'),
+            parentName    = data.get('parentName', ''),
+            parentEmail   = data.get('parentEmail', ''),
+            parentPhone   = data.get('parentPhone', ''),
+            studentName   = data['studentName'].strip(),
+            subject       = data['subject'],
+            level         = data['level'],
+            preferredDate = data['preferredDate'],
+            preferredTime = data['preferredTime'],
+            duration      = data.get('duration', '1'),
+            location      = data.get('location', 'online'),
+            notes         = data.get('notes', '').strip(),
+            pricePerHour  = float(data.get('pricePerHour', 0)),
+            brutAmount    = float(data.get('brutAmount', 0)),
+            taxCredit     = float(data.get('taxCredit', 0)),
+            totalAmount   = float(data.get('totalAmount', 0)),
+            isTrialCourse = is_trial,
+            # ✅ Statut selon le type de cours
+            # pending_payment = en attente de paiement Stripe (cours payant)
+            # pending         = cours gratuit, en attente de validation admin
+            status        = 'pending' if is_trial else 'pending_payment',
+        )
+
+        logger.info(f"[CREATE] RDV #{appointment.id} créé — trial: {is_trial} — status: {appointment.status}")
+
+        return _json_ok(
+            {'id': appointment.id, 'status': appointment.status},
+            status=201
+        )
+
+    except Exception as e:
+        logger.error(f"[CREATE] Erreur création RDV : {e}")
+        return _json_error('Erreur serveur lors de la création', 500)
+
+
+@require_http_methods(["GET"])
+def get_appointments(request, user_id):
+    """Récupère les RDV d'un parent (pour le dashboard)."""
+    try:
+        appointments = Appointment.objects.filter(
+            parentId=user_id
+        ).order_by('-created_at').values(
+            'id', 'studentName', 'subject', 'level',
+            'preferredDate', 'preferredTime', 'duration',
+            'location', 'totalAmount', 'status',
+            'isTrialCourse', 'created_at',
+        )
+
+        return _json_ok({'appointments': list(appointments)})
+    except Exception as e:
+        logger.error(f"[GET_APPOINTMENTS] Erreur : {e}")
+        return _json_error('Erreur serveur', 500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _json_ok(data=None, status=200):
+    """Retourne une réponse JSON de succès avec headers CORS."""
+    body = {'success': True}
+    if data:
+        body['data'] = data
+    body.update(data or {})  # flatten pour compatibilité frontend existant
+    response = JsonResponse(body, status=status)
+    response["Access-Control-Allow-Origin"] = "*"
+    return response
+
+
+def _json_error(message, status=400):
+    """Retourne une réponse JSON d'erreur avec headers CORS."""
+    response = JsonResponse({'success': False, 'message': message}, status=status)
+    response["Access-Control-Allow-Origin"] = "*"
+    return response
+
+
+def _send_confirmation_email(appointment):
+    """
+    Envoie un email de confirmation après paiement réussi.
+    Optionnel — commenter si pas d'email configuré.
+    """
+    try:
+        send_mail(
+            subject=f'✅ Cours confirmé — {appointment.subject} — KH Perfection',
+            message=(
+                f"Bonjour {appointment.parentName},\n\n"
+                f"Votre cours a été confirmé avec succès !\n\n"
+                f"Élève   : {appointment.studentName}\n"
+                f"Matière : {appointment.subject}\n"
+                f"Niveau  : {appointment.level}\n"
+                f"Date    : {appointment.preferredDate} à {appointment.preferredTime}\n"
+                f"Lieu    : {'En ligne' if appointment.location == 'online' else 'À domicile'}\n"
+                f"Montant : {appointment.totalAmount} €\n\n"
+                f"Notre équipe vous contactera prochainement.\n\n"
+                f"— KH Perfection"
+            ),
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@khperfection.fr'),
+            recipient_list=[appointment.parentEmail],
+            fail_silently=True,  # Ne pas bloquer si l'email échoue
+        )
+        logger.info(f"[EMAIL] Confirmation envoyée à {appointment.parentEmail}")
+    except Exception as e:
+        logger.error(f"[EMAIL] Erreur envoi confirmation : {e}")

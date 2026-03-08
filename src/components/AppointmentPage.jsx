@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 
-const API_URL = 'https://dollar5665.pythonanywhere.com/api';
+const API_URL = 'https://final-backend-swart.vercel.app/api';
 
 // ─── DONNÉES ─────────────────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ const PRICE_TABLE = {
   online: { Primaire:20, Collège:22.5, Lycée:35, Supérieur:30, Autre:30 },
   home:   { Primaire:20, Collège:22.5, Lycée:35, Supérieur:30, Autre:30 },
 };
-const TAX_CREDIT = 0.5; // crédit d'impôt 50% domicile
+const TAX_CREDIT = 0.5;
 
 const getLevelGroup = (v) => LEVELS.find(l => l.value === v)?.group ?? 'Autre';
 const getPPH = (loc, level, trial) => {
@@ -71,9 +71,7 @@ const Invoice = ({ data, onClose }) => {
             <p style={I.facDate}>Émise le {today}</p>
           </div>
         </div>
-
         <div style={I.div} />
-
         <div style={I.twoCol}>
           <div>
             <p style={I.secLabel}>FACTURÉ À</p>
@@ -90,9 +88,7 @@ const Invoice = ({ data, onClose }) => {
             <p style={I.clientInfo}>Modalité : <strong>{data.location === 'online' ? 'Visioconférence' : 'À domicile'}</strong></p>
           </div>
         </div>
-
         <div style={I.div} />
-
         <table style={I.table}>
           <thead>
             <tr style={I.thead}>
@@ -118,9 +114,7 @@ const Invoice = ({ data, onClose }) => {
             )}
           </tbody>
         </table>
-
         <div style={I.div} />
-
         <div style={I.totals}>
           <div style={I.totRow}><span>Sous-total brut</span><span>{brut.toFixed(2)} €</span></div>
           {data.location === 'home' && (
@@ -140,10 +134,8 @@ const Invoice = ({ data, onClose }) => {
             </div>
           )}
         </div>
-
         <div style={I.div} />
         <p style={I.legal}>KH PERFECTION • Organisme de soutien scolaire agréé • TVA non applicable (art. 261-4-4° CGI){data.location === 'home' ? ' • Éligible au crédit d\'impôt pour l\'emploi à domicile' : ''}</p>
-
         <div style={I.btns}>
           <button onClick={onClose} style={I.btnClose}>Fermer</button>
           <button onClick={() => window.print()} style={I.btnPrint}>🖨️ Imprimer / Enregistrer PDF</button>
@@ -167,7 +159,7 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
   const [step,          setStep]          = useState(1);
   const [showInvoice,   setShowInvoice]   = useState(false);
 
-  // ── Vérif cours d'essai ──────────────────────────────────────────────────
+  // ─── Vérif cours d'essai ────────────────────────────────────────────────
   useEffect(() => {
     const check = async () => {
       try {
@@ -180,7 +172,7 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
     user?.id ? check() : setCheckingTrial(false);
   }, [user?.id]);
 
-  // ── Calculs ──────────────────────────────────────────────────────────────
+  // ─── Calculs ────────────────────────────────────────────────────────────
   const isTrial  = !hasUsedTrial;
   const pph      = getPPH(form.location, form.level, isTrial);
   const dur      = parseFloat(form.duration) || 1;
@@ -211,60 +203,63 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
     return true;
   };
 
-  const handleContinue = () => { if (validate()) { setStep(2); window.scrollTo({ top:0, behavior:'smooth' }); } };
+  const handleContinue = () => {
+    if (validate()) {
+      setStep(2);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
-  // ── PAIEMENT STRIPE ──────────────────────────────────────────────────────
-  // Voir les instructions détaillées en bas du fichier
+  // ─── PAIEMENT STRIPE ────────────────────────────────────────────────────
   const handleStripePayment = async (appointmentId, amountCents) => {
     try {
-      // 1. Appel backend pour créer une Checkout Session Stripe
+      // ✅ ÉTAPE 1 : Sauvegarder la session utilisateur AVANT la redirection
+      // Cela évite la déconnexion quand Stripe redirige vers le site
+      sessionStorage.setItem('kh_user',        JSON.stringify(user));
+      sessionStorage.setItem('kh_redirect_after_payment', 'parent-dashboard');
+
+      // ✅ ÉTAPE 2 : Créer la Checkout Session Stripe via le backend
       const r = await fetch(`${API_URL}/payments/create-checkout-session/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           appointmentId,
-          amount:      amountCents, // montant en centimes
-          currency:    'eur',
-          description: `Cours de ${form.subject} — ${form.level} — KH Perfection`,
-          successUrl:  `${window.location.origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl:   `${window.location.origin}/payment-cancel`,
+          amount:       amountCents,
+          currency:     'eur',
+          description:  `Cours de ${form.subject} — ${form.level} — KH Perfection`,
+          // ✅ On passe appointment_id dans l'URL de succès pour le retrouver au retour
+          successUrl:   `${window.location.origin}/payment-success?session_id={CHECKOUT_SESSION_ID}&appointment_id=${appointmentId}`,
+          cancelUrl:    `${window.location.origin}/payment-cancel?appointment_id=${appointmentId}`,
           customerEmail: user?.email,
           metadata: {
             appointmentId: String(appointmentId),
-            subject:   form.subject,
-            level:     form.level,
-            studentName: form.studentName,
+            subject:       form.subject,
+            level:         form.level,
+            studentName:   form.studentName,
           },
         }),
       });
+
       const data = await r.json();
 
       if (data.success && data.checkoutUrl) {
-        // 2. Redirection vers la page de paiement Stripe hébergée
+        // ✅ ÉTAPE 3 : Redirection vers Stripe (la session est sauvegardée)
         window.location.href = data.checkoutUrl;
       } else {
-        // Fallback : redirection interne vers page paiement custom
-        navigate('payment', {
-          appointmentId,
-          amount:    net,
-          brutAmount: brut,
-          taxCredit: credit,
-          courseData: { ...form, pricePerHour: pph, isTrialCourse: false },
-        });
+        // Fallback si le backend ne retourne pas d'URL Stripe
+        setError(data.message || 'Impossible de créer la session de paiement.');
+        setLoading(false);
       }
-    } catch {
-      navigate('payment', {
-        appointmentId,
-        amount:    net,
-        brutAmount: brut,
-        taxCredit: credit,
-        courseData: { ...form, pricePerHour: pph, isTrialCourse: false },
-      });
+    } catch (err) {
+      setError('Erreur de connexion au service de paiement. Veuillez réessayer.');
+      setLoading(false);
     }
   };
 
+  // ─── SOUMISSION ─────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
       const payload = {
         parentId:      user?.id,
@@ -284,28 +279,36 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
         taxCredit:     credit,
         totalAmount:   net,
         isTrialCourse: isTrial,
-        status: 'pending',
+        // ✅ IMPORTANT : cours payant = "pending_payment" jusqu'à confirmation Stripe
+        // Le webhook Stripe changera ce statut en "confirmed" après paiement réussi
+        status: isTrial ? 'pending' : 'pending_payment',
       };
 
       const r = await fetch(`${API_URL}/appointments/`, {
-        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload),
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
       });
       const d = await r.json();
 
       if (d.success) {
         if (isTrial) {
+          // Cours gratuit → confirmation immédiate, pas de paiement
           alert('🎉 Votre cours d\'essai GRATUIT a été réservé ! Notre équipe vous contactera bientôt.');
           navigate('parent-dashboard');
         } else {
-          // Lancer le paiement Stripe (montant en centimes)
+          // ✅ Cours payant → Stripe UNIQUEMENT
+          // Le RDV est créé avec status "pending_payment"
+          // Il sera confirmé automatiquement par le webhook après paiement
           await handleStripePayment(d.data.id, Math.round(net * 100));
+          // ⚠️ Ne pas appeler navigate() ici : Stripe va rediriger la page entière
         }
       } else {
-        setError(d.message || 'Erreur lors de la réservation');
+        setError(d.message || 'Erreur lors de la réservation. Veuillez réessayer.');
+        setLoading(false);
       }
     } catch {
       setError('Impossible de se connecter au serveur.');
-    } finally {
       setLoading(false);
     }
   };
@@ -324,7 +327,7 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
     pph,
   };
 
-  // ── RENDER ───────────────────────────────────────────────────────────────
+  // ─── RENDER ─────────────────────────────────────────────────────────────
   return (
     <div style={S.page}>
       <style>{css}</style>
@@ -359,7 +362,6 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
               ? 'Découvrez nos enseignants diplômés sans engagement ni frais'
               : 'Tarifs transparents · Crédit d\'impôt immédiat · Paiement sécurisé Stripe'}
           </p>
-          {/* Steps */}
           <div style={S.steps}>
             {[['1','Informations'],['2','Récapitulatif'],['3','Paiement']].map(([n,lbl],i) => (
               <div key={n} style={S.stepItem}>
@@ -380,7 +382,6 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
         {/* ═══ STEP 1 ═══ */}
         {step === 1 && (
           <div className="fade-in">
-            {/* Banners */}
             {!checkingTrial && isTrial && (
               <div style={S.bannerGreen}>
                 <span style={{ fontSize:'2.5rem' }}>🎉</span>
@@ -405,7 +406,7 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
             )}
             {error && <div style={S.errBox}><span>⚠️</span>{error}</div>}
 
-            {/* ── Carte 1 : Élève ── */}
+            {/* Carte 1 : Élève */}
             <div style={S.card}>
               <div style={S.cardHdr}><span style={S.cardIco}>👤</span><h3 style={S.cardTtl}>Informations sur l'élève</h3></div>
               <div style={S.cardBdy}>
@@ -433,8 +434,6 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
                     </select>
                   </div>
                 </div>
-
-                {/* Tarif dynamique */}
                 {tariff && !isTrial && (
                   <div style={S.tariffBox}>
                     <p style={S.tariffTitle}>📌 Tarifs pour le niveau <strong>{grp}</strong></p>
@@ -457,7 +456,7 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
               </div>
             </div>
 
-            {/* ── Carte 2 : Date ── */}
+            {/* Carte 2 : Date */}
             <div style={S.card}>
               <div style={S.cardHdr}><span style={S.cardIco}>📅</span><h3 style={S.cardTtl}>Date et horaire souhaités</h3></div>
               <div style={S.cardBdy}>
@@ -490,12 +489,11 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
               </div>
             </div>
 
-            {/* ── Carte 3 : Lieu ── */}
+            {/* Carte 3 : Lieu */}
             <div style={S.card}>
               <div style={S.cardHdr}><span style={S.cardIco}>📍</span><h3 style={S.cardTtl}>Lieu du cours</h3></div>
               <div style={S.cardBdy}>
                 <div style={S.g2}>
-                  {/* En ligne */}
                   <label className="kh-radio" style={{ ...S.radioCard, ...(form.location==='online' ? S.radioOn : {}) }}>
                     <input type="radio" name="location" value="online"
                       checked={form.location==='online'} onChange={handleChange}
@@ -507,7 +505,6 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
                       {!isTrial && tariff && <p style={S.radioPrice}>{tariff.online} €/h</p>}
                     </div>
                   </label>
-                  {/* À domicile */}
                   <label className="kh-radio" style={{ ...S.radioCard, ...(form.location==='home' ? S.radioOn : {}) }}>
                     <input type="radio" name="location" value="home"
                       checked={form.location==='home'} onChange={handleChange}
@@ -529,7 +526,7 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
               </div>
             </div>
 
-            {/* ── Carte 4 : Notes ── */}
+            {/* Carte 4 : Notes */}
             <div style={S.card}>
               <div style={S.cardHdr}><span style={S.cardIco}>📝</span><h3 style={S.cardTtl}>Notes additionnelles</h3></div>
               <div style={S.cardBdy}>
@@ -540,7 +537,7 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
               </div>
             </div>
 
-            {/* ── Récap prix ── */}
+            {/* Récap prix */}
             <div style={S.priceCard}>
               <div style={S.priceHdr}>
                 <span style={{fontSize:'22px'}}>💰</span>
@@ -589,7 +586,6 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
               </div>
             </div>
 
-            {/* Boutons étape 1 */}
             <div style={S.btnRow}>
               <button onClick={() => navigate('parent-dashboard')} style={S.btnCancel} disabled={loading}>← Annuler</button>
               <button className="kh-submit" onClick={handleContinue}
@@ -629,8 +625,6 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
                     <p style={{ fontSize:'14px', color:'#e2e8f0', margin:0 }}>{form.notes}</p>
                   </div>
                 )}
-
-                {/* Total final */}
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'22px', paddingTop:'18px', borderTop:'2px solid rgba(253,216,53,.25)' }}>
                   <div>
                     <p style={{ margin:0, fontWeight:'700', color:'#fff', fontSize:'1rem' }}>{isTrial ? 'Cours d\'essai — Total' : 'NET À PAYER'}</p>
@@ -647,13 +641,16 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
               </div>
             </div>
 
-            {/* Badge paiement sécurisé Stripe */}
+            {/* ✅ Badge paiement sécurisé Stripe — affiché UNIQUEMENT pour les cours payants */}
             {!isTrial && (
               <div style={S.stripeBadge}>
                 <span style={{fontSize:'1.3rem'}}>🔒</span>
                 <div>
                   <p style={{ margin:'0 0 2px', fontWeight:'700', color:'#e2e8f0', fontSize:'14px' }}>Paiement 100% sécurisé via Stripe</p>
-                  <p style={{ margin:0, color:'#64748b', fontSize:'12px' }}>Vos données bancaires sont chiffrées et jamais stockées sur nos serveurs</p>
+                  <p style={{ margin:0, color:'#64748b', fontSize:'12px' }}>
+                    Vos données bancaires sont chiffrées et jamais stockées sur nos serveurs.
+                    <strong style={{ color:'#94a3b8' }}> Le cours sera confirmé uniquement après paiement réussi.</strong>
+                  </p>
                 </div>
                 <div style={S.stripeLogos}>
                   {['VISA','MC','CB','AMEX'].map(b => (
@@ -666,12 +663,16 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
             {error && <div style={{ ...S.errBox, marginBottom:'1rem' }}><span>⚠️</span>{error}</div>}
 
             <div style={S.btnRow}>
-              <button onClick={() => setStep(1)} style={S.btnCancel} disabled={loading}>← Modifier</button>
+              <button onClick={() => { setStep(1); setError(''); }} style={S.btnCancel} disabled={loading}>← Modifier</button>
               <button className="kh-submit" onClick={handleSubmit}
                 style={{ ...S.btnSubmit, ...(loading && { opacity:.6, cursor:'not-allowed' }) }} disabled={loading}>
                 {loading
-                  ? <span style={{display:'flex',alignItems:'center',gap:'10px'}}><span style={S.spinner}/>Traitement...</span>
-                  : isTrial ? '🎁 Confirmer mon cours gratuit' : '💳 Payer maintenant via Stripe'
+                  ? <span style={{display:'flex',alignItems:'center',gap:'10px'}}><span style={S.spinner}/>
+                      {isTrial ? 'Réservation...' : 'Redirection vers Stripe...'}
+                    </span>
+                  : isTrial
+                    ? '🎁 Confirmer mon cours gratuit'
+                    : '💳 Payer maintenant via Stripe'
                 }
               </button>
             </div>
@@ -711,10 +712,9 @@ const css = `
   }
 `;
 
-// ─── STYLES PAGE ─────────────────────────────────────────────────────────────
+// ─── STYLES ──────────────────────────────────────────────────────────────────
 const S = {
   page:       { minHeight:'100vh', background:'linear-gradient(160deg,#080d18 0%,#0f1624 55%,#0a1120 100%)', color:'#fff', fontFamily:"'Segoe UI',system-ui,sans-serif" },
-
   header:     { background:'rgba(8,13,24,.97)', borderBottom:'1px solid rgba(253,216,53,.15)', padding:'1rem 2rem', position:'sticky', top:0, zIndex:100, backdropFilter:'blur(14px)' },
   headerIn:   { maxWidth:'1100px', margin:'0 auto', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'12px' },
   brand:      { display:'flex', alignItems:'center', gap:'14px' },
@@ -725,7 +725,6 @@ const S = {
   btnGhost:   { padding:'8px 16px', background:'rgba(100,116,139,.12)', border:'1px solid rgba(100,116,139,.28)', color:'#94a3b8', borderRadius:'8px', cursor:'pointer', fontSize:'13px', fontWeight:'600' },
   btnGold:    { padding:'8px 16px', background:'rgba(253,216,53,.1)', border:'1px solid rgba(253,216,53,.3)', color:'#FDD835', borderRadius:'8px', cursor:'pointer', fontSize:'13px', fontWeight:'600' },
   btnRed:     { padding:'8px 16px', background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.28)', color:'#ef4444', borderRadius:'8px', cursor:'pointer', fontSize:'13px', fontWeight:'600' },
-
   hero:       { background:'linear-gradient(135deg,rgba(253,216,53,.07),rgba(139,58,147,.07))', borderBottom:'1px solid rgba(253,216,53,.1)', padding:'3rem 2rem 2.5rem' },
   heroIn:     { maxWidth:'1100px', margin:'0 auto', textAlign:'center' },
   heroPill:   { display:'inline-block', padding:'5px 20px', background:'rgba(253,216,53,.1)', border:'1px solid rgba(253,216,53,.28)', borderRadius:'999px', fontSize:'11px', fontWeight:'800', letterSpacing:'.12em', color:'#FDD835', marginBottom:'16px' },
@@ -739,33 +738,27 @@ const S = {
   stepIdle:   { background:'rgba(255,255,255,.05)', border:'2px solid rgba(255,255,255,.12)', color:'#475569' },
   stepLbl:    { fontSize:'13px', fontWeight:'600', color:'#475569', whiteSpace:'nowrap' },
   stepLine:   { width:'44px', height:'2px', background:'rgba(255,255,255,.08)', margin:'0 8px', borderRadius:'2px', transition:'background .3s' },
-
   main:       { maxWidth:'800px', margin:'0 auto', padding:'2rem 1.5rem 5rem' },
-
   bannerGreen:{ background:'linear-gradient(135deg,rgba(34,197,94,.13),rgba(16,185,129,.08))', border:'2px solid rgba(34,197,94,.32)', borderRadius:'16px', padding:'1.4rem', display:'flex', alignItems:'center', gap:'1.2rem', marginBottom:'1.5rem' },
   bannerBlue: { background:'rgba(59,130,246,.07)', border:'1px solid rgba(59,130,246,.22)', borderRadius:'14px', padding:'1.2rem 1.4rem', display:'flex', alignItems:'center', gap:'1rem', marginBottom:'1.5rem' },
   errBox:     { background:'rgba(239,68,68,.09)', border:'1px solid rgba(239,68,68,.28)', borderRadius:'10px', padding:'12px 16px', display:'flex', alignItems:'center', gap:'10px', color:'#f87171', fontSize:'14px', marginBottom:'1.5rem' },
-
   card:       { background:'rgba(255,255,255,.038)', border:'1px solid rgba(255,255,255,.075)', borderRadius:'18px', overflow:'hidden', marginBottom:'1.4rem', backdropFilter:'blur(4px)' },
   cardHdr:    { background:'rgba(253,216,53,.045)', borderBottom:'1px solid rgba(255,255,255,.065)', padding:'14px 22px', display:'flex', alignItems:'center', gap:'10px' },
   cardIco:    { fontSize:'20px' },
   cardTtl:    { margin:0, fontSize:'15px', fontWeight:'800', color:'#FDD835' },
   cardBdy:    { padding:'1.4rem 1.5rem' },
-
   lbl:        { display:'block', fontSize:'12px', color:'#94a3b8', marginBottom:'6px', fontWeight:'700', letterSpacing:'.04em', textTransform:'uppercase' },
   iWrap:      { marginBottom:'14px' },
   inp:        { width:'100%', padding:'11px 14px', background:'rgba(255,255,255,.055)', border:'1px solid rgba(255,255,255,.1)', borderRadius:'10px', color:'#f1f5f9', fontSize:'14px', boxSizing:'border-box' },
   sel:        { width:'100%', padding:'11px 14px', background:'rgba(255,255,255,.055)', border:'1px solid rgba(255,255,255,.1)', borderRadius:'10px', color:'#f1f5f9', fontSize:'14px', boxSizing:'border-box', cursor:'pointer' },
   g2:         { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))', gap:'14px' },
   g3:         { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(165px,1fr))', gap:'14px' },
-
   tariffBox:  { background:'rgba(253,216,53,.055)', border:'1px solid rgba(253,216,53,.18)', borderRadius:'12px', padding:'14px 16px', marginTop:'6px' },
   tariffTitle:{ margin:'0 0 10px', fontSize:'13px', color:'#FDD835', fontWeight:'700' },
   tariffGrid: { display:'flex', flexWrap:'wrap', gap:'8px' },
   tariffCell: { flex:'1 1 150px', background:'rgba(255,255,255,.04)', borderRadius:'8px', padding:'8px 12px', display:'flex', justifyContent:'space-between', alignItems:'center', border:'1px solid rgba(255,255,255,.065)' },
   tariffLbl:  { fontSize:'12px', color:'#94a3b8' },
   tariffVal:  { fontSize:'13px', fontWeight:'800', color:'#FDD835' },
-
   radioCard:  { background:'rgba(255,255,255,.03)', border:'2px solid rgba(255,255,255,.09)', borderRadius:'14px', padding:'1.2rem', display:'flex', alignItems:'flex-start', gap:'12px' },
   radioOn:    { background:'rgba(253,216,53,.07)', border:'2px solid rgba(253,216,53,.42)', boxShadow:'0 0 22px rgba(253,216,53,.12)' },
   radioCircle:{ width:'20px', height:'20px', borderRadius:'50%', border:'2px solid rgba(253,216,53,.45)', flexShrink:0, marginTop:'3px', display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.2)' },
@@ -773,7 +766,6 @@ const S = {
   radioTtl:   { margin:'0 0 3px', fontWeight:'800', color:'#f1f5f9', fontSize:'15px' },
   radioDesc:  { margin:'0 0 5px', fontSize:'12px', color:'#475569' },
   radioPrice: { margin:'3px 0 0', fontSize:'14px', fontWeight:'800', color:'#FDD835' },
-
   priceCard:  { background:'linear-gradient(135deg,rgba(253,216,53,.075),rgba(249,115,22,.05))', border:'2px solid rgba(253,216,53,.22)', borderRadius:'18px', overflow:'hidden', marginBottom:'1.8rem' },
   priceHdr:   { background:'rgba(253,216,53,.06)', borderBottom:'1px solid rgba(253,216,53,.13)', padding:'14px 20px', display:'flex', alignItems:'center', gap:'12px' },
   priceBdy:   { padding:'1.4rem 1.5rem' },
@@ -783,16 +775,13 @@ const S = {
   priceV:     { fontSize:'14px', fontWeight:'700', color:'#e2e8f0' },
   priceTotal: { display:'flex', justifyContent:'space-between', alignItems:'center', paddingTop:'14px', marginTop:'8px' },
   invBtn:     { marginLeft:'auto', padding:'6px 14px', background:'rgba(255,255,255,.065)', border:'1px solid rgba(255,255,255,.13)', borderRadius:'8px', color:'#e2e8f0', fontSize:'12px', fontWeight:'600', cursor:'pointer' },
-
   stripeBadge:{ display:'flex', alignItems:'center', gap:'16px', background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', borderRadius:'14px', padding:'14px 18px', marginBottom:'1.4rem', flexWrap:'wrap' },
   stripeLogos:{ display:'flex', gap:'6px', marginLeft:'auto', flexWrap:'wrap' },
   stripeLogo: { padding:'4px 10px', background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.12)', borderRadius:'6px', fontSize:'11px', fontWeight:'800', color:'#94a3b8', letterSpacing:'.04em' },
-
   recapGrid:  { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:'10px' },
   recapCell:  { background:'rgba(255,255,255,.04)', borderRadius:'10px', padding:'11px 14px', border:'1px solid rgba(255,255,255,.065)' },
   recapK:     { display:'block', fontSize:'10px', color:'#475569', fontWeight:'800', letterSpacing:'.07em', textTransform:'uppercase', marginBottom:'4px' },
   recapV:     { display:'block', fontSize:'14px', fontWeight:'700', color:'#f1f5f9' },
-
   btnRow:     { display:'flex', gap:'12px', marginTop:'6px' },
   btnCancel:  { flex:1, padding:'13px 18px', background:'rgba(100,116,139,.13)', border:'1px solid rgba(100,116,139,.22)', borderRadius:'12px', color:'#94a3b8', fontSize:'14px', fontWeight:'700', cursor:'pointer' },
   btnSubmit:  { flex:2, padding:'13px 18px', background:'linear-gradient(135deg,#FDD835,#F59E0B)', border:'none', borderRadius:'12px', color:'#080d18', fontSize:'15px', fontWeight:'900', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px', boxShadow:'0 6px 22px rgba(253,216,53,.28)' },
