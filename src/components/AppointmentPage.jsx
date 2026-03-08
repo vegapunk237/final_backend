@@ -1,1040 +1,834 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 const API_URL = 'https://dollar5665.pythonanywhere.com/api';
 
+// ─── DONNÉES ─────────────────────────────────────────────────────────────────
+
+const LEVELS = [
+  { value: 'Primaire',   label: 'PRIMAIRE',        group: 'Primaire'  },
+  { value: '6ème',       label: '6ÈME',            group: 'Collège'   },
+  { value: '5ème',       label: '5ÈME',            group: 'Collège'   },
+  { value: '4ème',       label: '4ÈME',            group: 'Collège'   },
+  { value: '3ème',       label: '3ÈME',            group: 'Collège'   },
+  { value: '2nde',       label: '2NDE',            group: 'Lycée'     },
+  { value: 'Première',   label: 'PREMIÈRE',        group: 'Lycée'     },
+  { value: 'Terminale',  label: 'TERMINALE',       group: 'Lycée'     },
+  { value: 'Prépa',      label: 'PRÉPA',           group: 'Supérieur' },
+  { value: 'Supérieur',  label: 'SUPÉRIEUR BAC+',  group: 'Supérieur' },
+  { value: 'Autre',      label: 'AUTRE',           group: 'Autre'     },
+];
+
+const SUBJECTS = [
+  'Mathématiques','Anglais','Français','Aide aux devoirs',
+  'Préparation aux examens','Physique-Chimie','Droit',
+  'Histoire-Géographie','Espagnol','Allemand',
+  'Accompagnement Orientation','SES — Sciences Économiques et Sociales',
+  'Économie','Biologie','SVT — Sciences de la Vie et de la Terre',
+  'Philosophie','Accompagnement Parcoursup','Chimie',
+  'Informatique','Italien','Langues','Médecine','Orthographe',
+];
+
+const TIME_SLOTS = [
+  '07:00','08:00','09:00','10:00','11:00','12:00',
+  '13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00',
+];
+
+// ─── TARIFICATION ─────────────────────────────────────────────────────────────
+const PRICE_TABLE = {
+  online: { Primaire:20, Collège:22.5, Lycée:35, Supérieur:30, Autre:30 },
+  home:   { Primaire:20, Collège:22.5, Lycée:35, Supérieur:30, Autre:30 },
+};
+const TAX_CREDIT = 0.5; // crédit d'impôt 50% domicile
+
+const getLevelGroup = (v) => LEVELS.find(l => l.value === v)?.group ?? 'Autre';
+const getPPH = (loc, level, trial) => {
+  if (trial) return 0;
+  return PRICE_TABLE[loc]?.[getLevelGroup(level)] ?? 30;
+};
+
+// ─── COMPOSANT FACTURE ────────────────────────────────────────────────────────
+const Invoice = ({ data, onClose }) => {
+  const num   = `KH-${Date.now().toString().slice(-8)}`;
+  const today = new Date().toLocaleDateString('fr-FR');
+  const brut  = data.pph * parseFloat(data.duration);
+  const credit= data.location === 'home' ? brut * TAX_CREDIT : 0;
+  const net   = brut - credit;
+
+  return (
+    <div style={I.overlay} onClick={onClose}>
+      <div id="invoice-print" style={I.modal} onClick={e => e.stopPropagation()}>
+        <div style={I.hdr}>
+          <div style={I.hdrLeft}>
+            <div style={I.logo}>KH</div>
+            <div>
+              <p style={I.co}>KH PERFECTION</p>
+              <p style={I.coSub}>Soutien scolaire — Cours particuliers</p>
+            </div>
+          </div>
+          <div style={I.hdrRight}>
+            <p style={I.facLabel}>FACTURE</p>
+            <p style={I.facNum}>N° {num}</p>
+            <p style={I.facDate}>Émise le {today}</p>
+          </div>
+        </div>
+
+        <div style={I.div} />
+
+        <div style={I.twoCol}>
+          <div>
+            <p style={I.secLabel}>FACTURÉ À</p>
+            <p style={I.clientName}>{data.parentName || '—'}</p>
+            <p style={I.clientInfo}>{data.parentEmail}</p>
+            {data.parentPhone && <p style={I.clientInfo}>{data.parentPhone}</p>}
+          </div>
+          <div>
+            <p style={I.secLabel}>DÉTAIL DU COURS</p>
+            <p style={I.clientInfo}>Élève : <strong>{data.studentName}</strong></p>
+            <p style={I.clientInfo}>Matière : <strong>{data.subject}</strong></p>
+            <p style={I.clientInfo}>Niveau : <strong>{data.level}</strong></p>
+            <p style={I.clientInfo}>Date : <strong>{data.preferredDate ? new Date(data.preferredDate).toLocaleDateString('fr-FR') : '—'}</strong> à <strong>{data.preferredTime}</strong></p>
+            <p style={I.clientInfo}>Modalité : <strong>{data.location === 'online' ? 'Visioconférence' : 'À domicile'}</strong></p>
+          </div>
+        </div>
+
+        <div style={I.div} />
+
+        <table style={I.table}>
+          <thead>
+            <tr style={I.thead}>
+              <th style={I.th}>Désignation</th>
+              <th style={I.thR}>Durée</th>
+              <th style={I.thR}>Tarif/h</th>
+              <th style={I.thR}>Montant</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style={I.td}>Cours de {data.subject} — {data.location === 'online' ? 'En ligne' : 'À domicile'} — Niveau {data.level}</td>
+              <td style={I.tdR}>{data.duration}h</td>
+              <td style={I.tdR}>{data.pph.toFixed(2)} €</td>
+              <td style={I.tdR}>{brut.toFixed(2)} €</td>
+            </tr>
+            {data.location === 'home' && (
+              <tr style={{ background: '#f0fdf4' }}>
+                <td style={{ ...I.td, color:'#166534' }}>✅ Crédit d'impôt immédiat 50% — Avance URSSAF (Art. 199 sexdecies CGI)</td>
+                <td style={I.tdR}></td><td style={I.tdR}></td>
+                <td style={{ ...I.tdR, color:'#166534', fontWeight:'800' }}>− {credit.toFixed(2)} €</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        <div style={I.div} />
+
+        <div style={I.totals}>
+          <div style={I.totRow}><span>Sous-total brut</span><span>{brut.toFixed(2)} €</span></div>
+          {data.location === 'home' && (
+            <div style={{ ...I.totRow, color:'#16a34a' }}>
+              <span>Crédit d'impôt immédiat (50%)</span>
+              <span>− {credit.toFixed(2)} €</span>
+            </div>
+          )}
+          <div style={I.totRow}><span>TVA</span><span>Exonéré (art. 261-4-4° CGI)</span></div>
+          <div style={I.grandRow}>
+            <span style={{ fontWeight:'900', fontSize:'15px' }}>NET À PAYER</span>
+            <span style={{ fontWeight:'900', fontSize:'22px', color:'#0a0f1e' }}>{net.toFixed(2)} €</span>
+          </div>
+          {data.location === 'home' && (
+            <div style={I.taxNote}>
+              💡 Votre coût réel après crédit d'impôt : <strong>{net.toFixed(2)} €</strong> au lieu de <strong>{brut.toFixed(2)} €</strong> — économie de {credit.toFixed(2)} €
+            </div>
+          )}
+        </div>
+
+        <div style={I.div} />
+        <p style={I.legal}>KH PERFECTION • Organisme de soutien scolaire agréé • TVA non applicable (art. 261-4-4° CGI){data.location === 'home' ? ' • Éligible au crédit d\'impôt pour l\'emploi à domicile' : ''}</p>
+
+        <div style={I.btns}>
+          <button onClick={onClose} style={I.btnClose}>Fermer</button>
+          <button onClick={() => window.print()} style={I.btnPrint}>🖨️ Imprimer / Enregistrer PDF</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── PAGE PRINCIPALE ──────────────────────────────────────────────────────────
 const AppointmentPage = ({ navigate, user, onLogout }) => {
-  const [formData, setFormData] = useState({
-    studentName: '',
-    subject: '',
-    level: '',
-    preferredDate: '',
-    preferredTime: '',
-    duration: '1',
-    location: 'online',
-    notes: ''
+  const [form, setForm] = useState({
+    studentName:'', subject:'', level:'',
+    preferredDate:'', preferredTime:'', duration:'1',
+    location:'online', notes:'',
   });
-
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [hasUsedTrial, setHasUsedTrial] = useState(false);
+  const [loading,       setLoading]       = useState(false);
+  const [error,         setError]         = useState('');
+  const [hasUsedTrial,  setHasUsedTrial]  = useState(false);
   const [checkingTrial, setCheckingTrial] = useState(true);
+  const [step,          setStep]          = useState(1);
+  const [showInvoice,   setShowInvoice]   = useState(false);
 
-  const subjects = [
-    'Mathématiques',
-    'Français',
-    'Anglais',
-    'Physique',
-    'Chimie',
-    'Sciences',
-    'Histoire-Géo',
-    'Philosophie',
-    'Économie',
-    'Espagnol',
-    'Allemand',
-    'SVT',
-    'Informatique'
-  ];
-
-  const timeSlots = [
-    '08:00', '09:00', '10:00', '11:00', '12:00',
-    '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'
-  ];
-
-  // Vérifier si l'utilisateur a déjà utilisé son cours d'essai
+  // ── Vérif cours d'essai ──────────────────────────────────────────────────
   useEffect(() => {
-    const checkTrialStatus = async () => {
+    const check = async () => {
       try {
-        const response = await fetch(`${API_URL}/appointments/check-trial/${user?.id}`);
-        const data = await response.json();
-        
-        if (data.success) {
-          setHasUsedTrial(data.hasUsedTrial);
-          console.log('✅ Statut cours d\'essai:', data.hasUsedTrial ? 'Utilisé' : 'Disponible');
-        }
-      } catch (err) {
-        console.error('❌ Erreur vérification cours d\'essai:', err);
-        // En cas d'erreur, on considère que le cours n'a pas été utilisé
-        setHasUsedTrial(false);
-      } finally {
-        setCheckingTrial(false);
-      }
+        const r = await fetch(`${API_URL}/appointments/check-trial/${user?.id}`);
+        const d = await r.json();
+        if (d.success) setHasUsedTrial(d.hasUsedTrial);
+      } catch { setHasUsedTrial(false); }
+      finally   { setCheckingTrial(false); }
     };
-
-    if (user?.id) {
-      checkTrialStatus();
-    } else {
-      setCheckingTrial(false);
-    }
+    user?.id ? check() : setCheckingTrial(false);
   }, [user?.id]);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  // ── Calculs ──────────────────────────────────────────────────────────────
+  const isTrial  = !hasUsedTrial;
+  const pph      = getPPH(form.location, form.level, isTrial);
+  const dur      = parseFloat(form.duration) || 1;
+  const brut     = pph * dur;
+  const credit   = form.location === 'home' && !isTrial ? brut * TAX_CREDIT : 0;
+  const net      = brut - credit;
+  const grp      = getLevelGroup(form.level);
+
+  const tariff = useMemo(() => {
+    if (!form.level) return null;
+    const g = getLevelGroup(form.level);
+    const o = PRICE_TABLE.online[g] ?? 30;
+    const h = PRICE_TABLE.home[g] ?? 30;
+    return { online: o, home: h, homeNet: h * (1 - TAX_CREDIT) };
+  }, [form.level]);
+
+  const handleChange = e => {
+    setForm(p => ({ ...p, [e.target.name]: e.target.value }));
     setError('');
   };
 
-  const validateForm = () => {
-    if (!formData.studentName.trim()) {
-      setError('Le nom de l\'élève est requis');
-      return false;
-    }
-    if (!formData.subject) {
-      setError('Veuillez sélectionner une matière');
-      return false;
-    }
-    if (!formData.level) {
-      setError('Veuillez sélectionner un niveau');
-      return false;
-    }
-    if (!formData.preferredDate) {
-      setError('Veuillez sélectionner une date');
-      return false;
-    }
-    if (!formData.preferredTime) {
-      setError('Veuillez sélectionner une heure');
-      return false;
-    }
+  const validate = () => {
+    if (!form.studentName.trim()) { setError("Nom de l'élève requis"); return false; }
+    if (!form.subject)            { setError('Sélectionnez une matière'); return false; }
+    if (!form.level)              { setError('Sélectionnez un niveau'); return false; }
+    if (!form.preferredDate)      { setError('Sélectionnez une date'); return false; }
+    if (!form.preferredTime)      { setError('Sélectionnez une heure'); return false; }
     return true;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
+  const handleContinue = () => { if (validate()) { setStep(2); window.scrollTo({ top:0, behavior:'smooth' }); } };
 
-    setLoading(true);
-    setError('');
-
+  // ── PAIEMENT STRIPE ──────────────────────────────────────────────────────
+  // Voir les instructions détaillées en bas du fichier
+  const handleStripePayment = async (appointmentId, amountCents) => {
     try {
-      const isTrialCourse = !hasUsedTrial;
-      const pricePerHour = isTrialCourse ? 0 : (formData.location === 'online' ? 35 : 45);
-      const totalAmount = pricePerHour * parseFloat(formData.duration);
+      // 1. Appel backend pour créer une Checkout Session Stripe
+      const r = await fetch(`${API_URL}/payments/create-checkout-session/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appointmentId,
+          amount:      amountCents, // montant en centimes
+          currency:    'eur',
+          description: `Cours de ${form.subject} — ${form.level} — KH Perfection`,
+          successUrl:  `${window.location.origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl:   `${window.location.origin}/payment-cancel`,
+          customerEmail: user?.email,
+          metadata: {
+            appointmentId: String(appointmentId),
+            subject:   form.subject,
+            level:     form.level,
+            studentName: form.studentName,
+          },
+        }),
+      });
+      const data = await r.json();
 
-      const appointmentData = {
-        parentId: user?.id,
-        parentName: user?.parentName || user?.name,
-        parentEmail: user?.email,
-        parentPhone: user?.phone || '',
-        studentName: formData.studentName.trim(),
-        subject: formData.subject,
-        level: formData.level,
-        preferredDate: formData.preferredDate,
-        preferredTime: formData.preferredTime,
-        duration: formData.duration,
-        location: formData.location,
-        notes: formData.notes.trim(),
-        pricePerHour: pricePerHour,
-        totalAmount: totalAmount,
-        isTrialCourse: isTrialCourse,
-        status: 'pending'
+      if (data.success && data.checkoutUrl) {
+        // 2. Redirection vers la page de paiement Stripe hébergée
+        window.location.href = data.checkoutUrl;
+      } else {
+        // Fallback : redirection interne vers page paiement custom
+        navigate('payment', {
+          appointmentId,
+          amount:    net,
+          brutAmount: brut,
+          taxCredit: credit,
+          courseData: { ...form, pricePerHour: pph, isTrialCourse: false },
+        });
+      }
+    } catch {
+      navigate('payment', {
+        appointmentId,
+        amount:    net,
+        brutAmount: brut,
+        taxCredit: credit,
+        courseData: { ...form, pricePerHour: pph, isTrialCourse: false },
+      });
+    }
+  };
+
+  const handleSubmit = async () => {
+    setLoading(true); setError('');
+    try {
+      const payload = {
+        parentId:      user?.id,
+        parentName:    user?.parentName || user?.name,
+        parentEmail:   user?.email,
+        parentPhone:   user?.phone || '',
+        studentName:   form.studentName.trim(),
+        subject:       form.subject,
+        level:         form.level,
+        preferredDate: form.preferredDate,
+        preferredTime: form.preferredTime,
+        duration:      form.duration,
+        location:      form.location,
+        notes:         form.notes.trim(),
+        pricePerHour:  pph,
+        brutAmount:    brut,
+        taxCredit:     credit,
+        totalAmount:   net,
+        isTrialCourse: isTrial,
+        status: 'pending',
       };
 
-      console.log('📤 Envoi de la demande de rendez-vous:', {
-        ...appointmentData,
-        isTrialCourse: isTrialCourse ? '✓ GRATUIT' : '✗ Payant'
+      const r = await fetch(`${API_URL}/appointments/`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload),
       });
+      const d = await r.json();
 
-      const response = await fetch(`${API_URL}/appointments/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(appointmentData)
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        console.log('✅ Rendez-vous créé avec succès:', data.data);
-        
-        if (isTrialCourse) {
-          // Cours d'essai gratuit - Pas de paiement requis
-          alert(
-            '🎉 Félicitations !\n\n' +
-            'Votre cours d\'essai GRATUIT a été réservé avec succès.\n\n' +
-            'Notre équipe va vous assigner un enseignant et vous contacter très bientôt.\n\n' +
-            '⚠️ Note importante : À partir de votre prochain cours, les tarifs normaux s\'appliqueront :\n' +
-            '• Cours en ligne : 35€/heure\n' +
-            '• Cours à domicile : 45€/heure'
-          );
-          
-          // Retour au dashboard
+      if (d.success) {
+        if (isTrial) {
+          alert('🎉 Votre cours d\'essai GRATUIT a été réservé ! Notre équipe vous contactera bientôt.');
           navigate('parent-dashboard');
         } else {
-          // Cours payant - Redirection vers le paiement
-          navigate('payment', { 
-            appointmentId: data.data.id,
-            amount: totalAmount,
-            courseData: {
-              ...formData,
-              isTrialCourse: false
-            }
-          });
+          // Lancer le paiement Stripe (montant en centimes)
+          await handleStripePayment(d.data.id, Math.round(net * 100));
         }
       } else {
-        setError(data.message || 'Erreur lors de la création du rendez-vous');
+        setError(d.message || 'Erreur lors de la réservation');
       }
-    } catch (err) {
-      console.error('❌ Erreur création rendez-vous:', err);
-      setError('Impossible de se connecter au serveur. Vérifiez que le serveur est démarré.');
+    } catch {
+      setError('Impossible de se connecter au serveur.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Calculer le prix
-  const isTrialCourse = !hasUsedTrial;
-  const pricePerHour = isTrialCourse ? 0 : (formData.location === 'online' ? 35 : 45);
-  const totalAmount = pricePerHour * (parseFloat(formData.duration) || 1);
+  const invData = {
+    parentName:    user?.parentName || user?.name,
+    parentEmail:   user?.email,
+    parentPhone:   user?.phone,
+    studentName:   form.studentName || '—',
+    subject:       form.subject || '—',
+    level:         form.level || '—',
+    preferredDate: form.preferredDate,
+    preferredTime: form.preferredTime || '—',
+    location:      form.location,
+    duration:      form.duration,
+    pph,
+  };
 
+  // ── RENDER ───────────────────────────────────────────────────────────────
   return (
-    <div style={styles.container}>
-      {/* Header */}
-      <header style={styles.header}>
-        <div style={styles.headerContent}>
-          <div style={styles.logoSection}>
-            <div style={styles.logoCircle}>KH</div>
+    <div style={S.page}>
+      <style>{css}</style>
+
+      {/* HEADER */}
+      <header style={S.header}>
+        <div style={S.headerIn}>
+          <div style={S.brand}>
+            <div style={S.logoBadge}>KH</div>
             <div>
-              <h1 style={styles.brandName}>KH PERFECTION</h1>
-              <p style={styles.brandTagline}>Réservation de cours</p>
+              <h1 style={S.brandName}>KH PERFECTION</h1>
+              <p style={S.brandSub}>Réservation de cours</p>
             </div>
           </div>
-          
-          <div style={styles.headerActions}>
-            <button onClick={() => navigate('parent-dashboard')} style={styles.backButton}>
-              ← Retour
-            </button>
-            <button onClick={() => navigate('home')} style={styles.homeButton}>
-              🏠 Accueil
-            </button>
-            <button onClick={onLogout} style={styles.logoutButton}>
-              🚪 Déconnexion
-            </button>
+          <div style={S.navBtns}>
+            <button onClick={() => navigate('parent-dashboard')} style={S.btnGhost}>← Retour</button>
+            <button onClick={() => navigate('home')}             style={S.btnGold}>🏠 Accueil</button>
+            <button onClick={onLogout}                           style={S.btnRed}>🚪 Déconnexion</button>
           </div>
         </div>
       </header>
 
-      {/* Page Header */}
-      <section style={styles.pageHeader}>
-        <div style={styles.pageHeaderContent}>
-          <h2 style={styles.pageTitle}>Prendre un rendez-vous 📅</h2>
-          <p style={styles.pageSubtitle}>
-            {isTrialCourse 
-              ? '🎁 Réservez votre cours d\'essai GRATUIT' 
-              : 'Réservez un cours avec un enseignant qualifié'}
+      {/* HERO */}
+      <section style={S.hero}>
+        <div style={S.heroIn}>
+          <span style={S.heroPill}>{isTrial ? '🎁 COURS D\'ESSAI GRATUIT' : '📅 RÉSERVATION EN LIGNE'}</span>
+          <h2 style={S.heroTitle}>
+            {isTrial ? 'Votre 1er cours offert' : 'Réservez votre cours'}
+          </h2>
+          <p style={S.heroSub}>
+            {isTrial
+              ? 'Découvrez nos enseignants diplômés sans engagement ni frais'
+              : 'Tarifs transparents · Crédit d\'impôt immédiat · Paiement sécurisé Stripe'}
           </p>
+          {/* Steps */}
+          <div style={S.steps}>
+            {[['1','Informations'],['2','Récapitulatif'],['3','Paiement']].map(([n,lbl],i) => (
+              <div key={n} style={S.stepItem}>
+                <div style={{ ...S.stepBubble, ...(step > i ? S.stepDone : step === i+1 ? S.stepActive : S.stepIdle) }}>
+                  {step > i ? '✓' : n}
+                </div>
+                <span style={{ ...S.stepLbl, ...(step === i+1 && { color:'#FDD835', fontWeight:'700' }) }}>{lbl}</span>
+                {i < 2 && <div style={{ ...S.stepLine, ...(step > i+1 && { background:'#FDD835' }) }} />}
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* Form Container */}
-      <section style={styles.formSection}>
-        <div style={styles.formContainer}>
-          
-          {/* Trial Course Banner */}
-          {!checkingTrial && isTrialCourse && (
-            <div style={styles.trialBanner}>
-              <div style={styles.trialIcon}>🎉</div>
-              <div style={styles.trialContent}>
-                <h3 style={styles.trialTitle}>Cours d'essai GRATUIT !</h3>
-                <p style={styles.trialText}>
-                  Profitez de votre premier cours gratuitement pour découvrir nos services.
-                  <br />
-                  <strong>⚠️ Important :</strong> Après ce cours d'essai, les tarifs normaux s'appliqueront 
-                  (35€/h en ligne, 45€/h à domicile).
-                </p>
-              </div>
-            </div>
-          )}
+      {/* MAIN */}
+      <main style={S.main}>
 
-          {/* Already Used Trial Banner */}
-          {!checkingTrial && !isTrialCourse && (
-            <div style={styles.infoBanner}>
-              <div style={styles.infoIcon}>ℹ️</div>
-              <div style={styles.infoContent}>
-                <h3 style={styles.infoTitle}>Tarifs normaux</h3>
-                <p style={styles.infoText}>
-                  Vous avez déjà utilisé votre cours d'essai gratuit.
-                  <br />
-                  Tarifs : 35€/h en ligne • 45€/h à domicile
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Error Message */}
-          {error && (
-            <div style={styles.errorBox}>
-              <span style={styles.errorIcon}>⚠️</span>
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Informations de l'élève */}
-          <div style={styles.formGroup}>
-            <div style={styles.formGroupHeader}>
-              <span style={styles.formGroupIcon}>👤</span>
-              <h3 style={styles.formGroupTitle}>Informations sur l'élève</h3>
-            </div>
-            
-            <div style={styles.formContent}>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Nom de l'élève *</label>
-                <input
-                  type="text"
-                  name="studentName"
-                  value={formData.studentName}
-                  onChange={handleChange}
-                  style={styles.input}
-                  placeholder="Prénom et nom"
-                  required
-                  disabled={loading}
-                />
-              </div>
-
-              <div style={styles.gridTwo}>
-                <div style={styles.inputGroup}>
-                  <label style={styles.label}>Matière *</label>
-                  <select
-                    name="subject"
-                    value={formData.subject}
-                    onChange={handleChange}
-                    style={styles.select}
-                    required
-                    disabled={loading}
-                  >
-                    <option value="">Sélectionner une matière</option>
-                    {subjects.map((subject) => (
-                      <option key={subject} value={subject}>{subject}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={styles.inputGroup}>
-                  <label style={styles.label}>Niveau *</label>
-                  <select
-                    name="level"
-                    value={formData.level}
-                    onChange={handleChange}
-                    style={styles.select}
-                    required
-                    disabled={loading}
-                  >
-                    <option value="">Sélectionner un niveau</option>
-                    <option value="Primaire">Primaire (CP-CM2)</option>
-                    <option value="Collège">Collège (6ème-3ème)</option>
-                    <option value="Lycée">Lycée (2nde-Terminale)</option>
-                    <option value="Supérieur">Supérieur</option>
-                  </select>
+        {/* ═══ STEP 1 ═══ */}
+        {step === 1 && (
+          <div className="fade-in">
+            {/* Banners */}
+            {!checkingTrial && isTrial && (
+              <div style={S.bannerGreen}>
+                <span style={{ fontSize:'2.5rem' }}>🎉</span>
+                <div>
+                  <h3 style={{ margin:'0 0 5px', color:'#22c55e', fontWeight:'800' }}>Votre 1er cours est GRATUIT !</h3>
+                  <p style={{ margin:0, color:'#86efac', fontSize:'13px', lineHeight:'1.6' }}>
+                    Premier cours offert pour découvrir nos services. Les tarifs normaux s'appliqueront à partir du 2ème cours.
+                  </p>
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Date et Heure */}
-          <div style={styles.formGroup}>
-            <div style={styles.formGroupHeader}>
-              <span style={styles.formGroupIcon}>📅</span>
-              <h3 style={styles.formGroupTitle}>Date et horaire souhaités</h3>
-            </div>
-            
-            <div style={styles.formContent}>
-              <div style={styles.gridThree}>
-                <div style={styles.inputGroup}>
-                  <label style={styles.label}>Date préférée *</label>
-                  <input
-                    type="date"
-                    name="preferredDate"
-                    value={formData.preferredDate}
-                    onChange={handleChange}
-                    min={new Date().toISOString().split('T')[0]}
-                    style={styles.input}
-                    required
-                    disabled={loading}
-                  />
-                </div>
-
-                <div style={styles.inputGroup}>
-                  <label style={styles.label}>Heure préférée *</label>
-                  <select
-                    name="preferredTime"
-                    value={formData.preferredTime}
-                    onChange={handleChange}
-                    style={styles.select}
-                    required
-                    disabled={loading}
-                  >
-                    <option value="">Sélectionner</option>
-                    {timeSlots.map((time) => (
-                      <option key={time} value={time}>{time}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={styles.inputGroup}>
-                  <label style={styles.label}>Durée (heures) *</label>
-                  <select
-                    name="duration"
-                    value={formData.duration}
-                    onChange={handleChange}
-                    style={styles.select}
-                    required
-                    disabled={loading}
-                  >
-                    <option value="1">1 heure</option>
-                    <option value="1.5">1h30</option>
-                    <option value="2">2 heures</option>
-                    <option value="2.5">2h30</option>
-                    <option value="3">3 heures</option>
-                  </select>
+            )}
+            {!checkingTrial && !isTrial && (
+              <div style={S.bannerBlue}>
+                <span style={{ fontSize:'2rem' }}>ℹ️</span>
+                <div>
+                  <h3 style={{ margin:'0 0 4px', color:'#60a5fa', fontWeight:'700', fontSize:'1rem' }}>Cours d'essai déjà utilisé</h3>
+                  <p style={{ margin:0, color:'#93c5fd', fontSize:'13px' }}>
+                    Sélectionnez votre niveau pour voir le tarif applicable. Les cours à domicile bénéficient du crédit d'impôt immédiat 50%.
+                  </p>
                 </div>
               </div>
-            </div>
-          </div>
+            )}
+            {error && <div style={S.errBox}><span>⚠️</span>{error}</div>}
 
-          {/* Lieu du cours */}
-          <div style={styles.formGroup}>
-            <div style={styles.formGroupHeader}>
-              <span style={styles.formGroupIcon}>📍</span>
-              <h3 style={styles.formGroupTitle}>Lieu du cours</h3>
-            </div>
-            
-            <div style={styles.formContent}>
-              <div style={styles.gridTwo}>
-                <label style={{
-                  ...styles.radioCard,
-                  ...(formData.location === 'online' ? styles.radioCardSelected : {}),
-                  ...(loading ? { opacity: 0.6, cursor: 'not-allowed' } : {})
-                }}>
-                  <input
-                    type="radio"
-                    name="location"
-                    value="online"
-                    checked={formData.location === 'online'}
-                    onChange={handleChange}
-                    style={styles.radioInput}
-                    disabled={loading}
-                  />
-                  <div>
-                    <p style={styles.radioTitle}>💻 En ligne</p>
-                    <p style={styles.radioSubtitle}>
-                      Via visioconférence {!isTrialCourse && '(35€/h)'}
-                    </p>
+            {/* ── Carte 1 : Élève ── */}
+            <div style={S.card}>
+              <div style={S.cardHdr}><span style={S.cardIco}>👤</span><h3 style={S.cardTtl}>Informations sur l'élève</h3></div>
+              <div style={S.cardBdy}>
+                <div style={S.iWrap}>
+                  <label style={S.lbl}>Nom complet de l'élève *</label>
+                  <input className="kh-inp" type="text" name="studentName"
+                    value={form.studentName} onChange={handleChange}
+                    placeholder="Prénom et nom" style={S.inp} disabled={loading} />
+                </div>
+                <div style={S.g2}>
+                  <div style={S.iWrap}>
+                    <label style={S.lbl}>Niveau scolaire *</label>
+                    <select className="kh-sel" name="level" value={form.level}
+                      onChange={handleChange} style={S.sel} disabled={loading}>
+                      <option value="" style={optStyle}>— Sélectionner un niveau —</option>
+                      {LEVELS.map(l => <option key={l.value} value={l.value} style={optStyle}>{l.label}</option>)}
+                    </select>
                   </div>
-                </label>
-
-                <label style={{
-                  ...styles.radioCard,
-                  ...(formData.location === 'home' ? styles.radioCardSelected : {}),
-                  ...(loading ? { opacity: 0.6, cursor: 'not-allowed' } : {})
-                }}>
-                  <input
-                    type="radio"
-                    name="location"
-                    value="home"
-                    checked={formData.location === 'home'}
-                    onChange={handleChange}
-                    style={styles.radioInput}
-                    disabled={loading}
-                  />
-                  <div>
-                    <p style={styles.radioTitle}>🏠 À domicile</p>
-                    <p style={styles.radioSubtitle}>
-                      Chez l'élève {!isTrialCourse && '(45€/h)'}
-                    </p>
+                  <div style={S.iWrap}>
+                    <label style={S.lbl}>Matière *</label>
+                    <select className="kh-sel" name="subject" value={form.subject}
+                      onChange={handleChange} style={S.sel} disabled={loading}>
+                      <option value="" style={optStyle}>— Sélectionner une matière —</option>
+                      {SUBJECTS.map(s => <option key={s} value={s} style={optStyle}>{s}</option>)}
+                    </select>
                   </div>
-                </label>
+                </div>
+
+                {/* Tarif dynamique */}
+                {tariff && !isTrial && (
+                  <div style={S.tariffBox}>
+                    <p style={S.tariffTitle}>📌 Tarifs pour le niveau <strong>{grp}</strong></p>
+                    <div style={S.tariffGrid}>
+                      <div style={S.tariffCell}>
+                        <span style={S.tariffLbl}>💻 En ligne</span>
+                        <span style={S.tariffVal}>{tariff.online} €/h</span>
+                      </div>
+                      <div style={S.tariffCell}>
+                        <span style={S.tariffLbl}>🏠 Domicile (brut)</span>
+                        <span style={S.tariffVal}>{tariff.home} €/h</span>
+                      </div>
+                      <div style={{ ...S.tariffCell, background:'rgba(34,197,94,.1)', border:'1px solid rgba(34,197,94,.3)' }}>
+                        <span style={S.tariffLbl}>🏠 Domicile après crédit d'impôt 50%</span>
+                        <span style={{ ...S.tariffVal, color:'#22c55e' }}>{tariff.homeNet} €/h net</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
 
-          {/* Notes additionnelles */}
-          <div style={styles.formGroup}>
-            <div style={styles.formGroupHeader}>
-              <span style={styles.formGroupIcon}>📝</span>
-              <h3 style={styles.formGroupTitle}>Notes additionnelles</h3>
-            </div>
-            
-            <div style={styles.formContent}>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Informations complémentaires</label>
-                <textarea
-                  name="notes"
-                  value={formData.notes}
-                  onChange={handleChange}
-                  style={styles.textarea}
-                  placeholder="Objectifs spécifiques, difficultés particulières, préférences..."
-                  rows="4"
-                  disabled={loading}
-                />
+            {/* ── Carte 2 : Date ── */}
+            <div style={S.card}>
+              <div style={S.cardHdr}><span style={S.cardIco}>📅</span><h3 style={S.cardTtl}>Date et horaire souhaités</h3></div>
+              <div style={S.cardBdy}>
+                <div style={S.g3}>
+                  <div style={S.iWrap}>
+                    <label style={S.lbl}>Date préférée *</label>
+                    <input className="kh-inp" type="date" name="preferredDate"
+                      value={form.preferredDate} onChange={handleChange}
+                      min={new Date().toISOString().split('T')[0]}
+                      style={S.inp} disabled={loading} />
+                  </div>
+                  <div style={S.iWrap}>
+                    <label style={S.lbl}>Heure préférée *</label>
+                    <select className="kh-sel" name="preferredTime" value={form.preferredTime}
+                      onChange={handleChange} style={S.sel} disabled={loading}>
+                      <option value="" style={optStyle}>— Sélectionner —</option>
+                      {TIME_SLOTS.map(t => <option key={t} value={t} style={optStyle}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div style={S.iWrap}>
+                    <label style={S.lbl}>Durée *</label>
+                    <select className="kh-sel" name="duration" value={form.duration}
+                      onChange={handleChange} style={S.sel} disabled={loading}>
+                      {[['1','1 heure'],['1.5','1h30'],['2','2 heures'],['2.5','2h30'],['3','3 heures']].map(([v,l]) => (
+                        <option key={v} value={v} style={optStyle}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Pricing Info */}
-          <div style={styles.pricingCard}>
-            <div style={styles.pricingHeader}>
-              <span style={styles.pricingIcon}>💰</span>
-              <h4 style={styles.pricingTitle}>Tarification</h4>
+            {/* ── Carte 3 : Lieu ── */}
+            <div style={S.card}>
+              <div style={S.cardHdr}><span style={S.cardIco}>📍</span><h3 style={S.cardTtl}>Lieu du cours</h3></div>
+              <div style={S.cardBdy}>
+                <div style={S.g2}>
+                  {/* En ligne */}
+                  <label className="kh-radio" style={{ ...S.radioCard, ...(form.location==='online' ? S.radioOn : {}) }}>
+                    <input type="radio" name="location" value="online"
+                      checked={form.location==='online'} onChange={handleChange}
+                      style={{display:'none'}} disabled={loading} />
+                    <div style={S.radioCircle}>{form.location==='online' && <div style={S.radioDot}/>}</div>
+                    <div style={{flex:1}}>
+                      <p style={S.radioTtl}>💻 En ligne</p>
+                      <p style={S.radioDesc}>Via visioconférence</p>
+                      {!isTrial && tariff && <p style={S.radioPrice}>{tariff.online} €/h</p>}
+                    </div>
+                  </label>
+                  {/* À domicile */}
+                  <label className="kh-radio" style={{ ...S.radioCard, ...(form.location==='home' ? S.radioOn : {}) }}>
+                    <input type="radio" name="location" value="home"
+                      checked={form.location==='home'} onChange={handleChange}
+                      style={{display:'none'}} disabled={loading} />
+                    <div style={S.radioCircle}>{form.location==='home' && <div style={S.radioDot}/>}</div>
+                    <div style={{flex:1}}>
+                      <p style={S.radioTtl}>🏠 À domicile</p>
+                      <p style={S.radioDesc}>Chez l'élève</p>
+                      {!isTrial && tariff && (
+                        <>
+                          <p style={{ ...S.radioPrice, textDecoration:'line-through', opacity:.5 }}>{tariff.home} €/h</p>
+                          <p style={{ ...S.radioPrice, color:'#22c55e' }}>{tariff.homeNet} €/h net ✅</p>
+                          <p style={{ fontSize:'11px', color:'#86efac', margin:'2px 0 0' }}>Crédit d'impôt 50% appliqué</p>
+                        </>
+                      )}
+                    </div>
+                  </label>
+                </div>
+              </div>
             </div>
-            <div style={styles.pricingContent}>
-              {isTrialCourse ? (
-                <>
-                  <div style={styles.freeTrialBox}>
-                    <span style={styles.freeTrialIcon}>🎁</span>
-                    <div>
-                      <p style={styles.freeTrialTitle}>Cours d'essai GRATUIT</p>
-                      <p style={styles.freeTrialSubtitle}>
-                        Profitez de votre premier cours sans frais
+
+            {/* ── Carte 4 : Notes ── */}
+            <div style={S.card}>
+              <div style={S.cardHdr}><span style={S.cardIco}>📝</span><h3 style={S.cardTtl}>Notes additionnelles</h3></div>
+              <div style={S.cardBdy}>
+                <label style={S.lbl}>Informations complémentaires (optionnel)</label>
+                <textarea className="kh-inp" name="notes" value={form.notes} onChange={handleChange}
+                  placeholder="Objectifs spécifiques, difficultés particulières, préférences pédagogiques..."
+                  rows={4} style={{ ...S.inp, resize:'vertical', minHeight:'90px' }} disabled={loading} />
+              </div>
+            </div>
+
+            {/* ── Récap prix ── */}
+            <div style={S.priceCard}>
+              <div style={S.priceHdr}>
+                <span style={{fontSize:'22px'}}>💰</span>
+                <h4 style={{ margin:0, color:'#FDD835', fontWeight:'800' }}>Récapitulatif tarifaire</h4>
+                {!isTrial && form.level && (
+                  <button onClick={() => setShowInvoice(true)} style={S.invBtn}>📄 Aperçu facture</button>
+                )}
+              </div>
+              <div style={S.priceBdy}>
+                {isTrial ? (
+                  <div style={S.freeRow}>
+                    <span style={{fontSize:'2.8rem'}}>🎁</span>
+                    <div style={{flex:1}}>
+                      <p style={{ margin:'0 0 4px', fontWeight:'800', color:'#22c55e', fontSize:'1.1rem' }}>Cours d'essai GRATUIT</p>
+                      <p style={{ margin:0, color:'#86efac', fontSize:'13px' }}>Aucun paiement requis pour votre 1er cours</p>
+                    </div>
+                    <span style={{ fontSize:'2rem', fontWeight:'900', color:'#22c55e' }}>0 €</span>
+                  </div>
+                ) : (
+                  <>
+                    {[
+                      ['Tarif horaire', `${pph} €/h`],
+                      ['Durée', `${form.duration}h`],
+                      ['Sous-total brut', `${brut.toFixed(2)} €`],
+                    ].map(([k,v]) => (
+                      <div key={k} style={S.priceRow}>
+                        <span style={S.priceK}>{k}</span>
+                        <span style={S.priceV}>{v}</span>
+                      </div>
+                    ))}
+                    {form.location === 'home' && (
+                      <div style={{ ...S.priceRow, color:'#22c55e' }}>
+                        <span>✅ Crédit d'impôt immédiat (50%)</span>
+                        <span>− {credit.toFixed(2)} €</span>
+                      </div>
+                    )}
+                    <div style={S.priceTotal}>
+                      <div>
+                        <p style={{ margin:0, fontWeight:'800', color:'#fff', fontSize:'15px' }}>NET À PAYER</p>
+                        <p style={{ margin:'2px 0 0', fontSize:'11px', color:'#64748b' }}>TVA non applicable — Exonéré art. 261-4-4° CGI</p>
+                      </div>
+                      <span style={{ fontSize:'2.2rem', fontWeight:'900', color:'#FDD835' }}>{net.toFixed(2)} €</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Boutons étape 1 */}
+            <div style={S.btnRow}>
+              <button onClick={() => navigate('parent-dashboard')} style={S.btnCancel} disabled={loading}>← Annuler</button>
+              <button className="kh-submit" onClick={handleContinue}
+                style={{ ...S.btnSubmit, ...(loading && { opacity:.6, cursor:'not-allowed' }) }} disabled={loading}>
+                {isTrial ? '🎁 Réserver mon cours gratuit →' : 'Voir le récapitulatif →'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ STEP 2 : RÉCAPITULATIF ═══ */}
+        {step === 2 && (
+          <div className="fade-in">
+            <div style={S.card}>
+              <div style={S.cardHdr}><span style={S.cardIco}>✅</span><h3 style={S.cardTtl}>Récapitulatif de votre réservation</h3></div>
+              <div style={S.cardBdy}>
+                <div style={S.recapGrid}>
+                  {[
+                    ['Élève',   form.studentName],
+                    ['Niveau',  form.level],
+                    ['Matière', form.subject],
+                    ['Date',    form.preferredDate ? new Date(form.preferredDate).toLocaleDateString('fr-FR') : '—'],
+                    ['Heure',   form.preferredTime],
+                    ['Durée',   `${form.duration}h`],
+                    ['Lieu',    form.location === 'online' ? '💻 En ligne' : '🏠 À domicile'],
+                    ['Tarif/h', isTrial ? 'GRATUIT' : `${pph} €`],
+                  ].map(([k,v]) => (
+                    <div key={k} style={S.recapCell}>
+                      <span style={S.recapK}>{k}</span>
+                      <span style={S.recapV}>{v || '—'}</span>
+                    </div>
+                  ))}
+                </div>
+                {form.notes && (
+                  <div style={{ marginTop:'14px', padding:'12px 14px', background:'rgba(255,255,255,.04)', borderRadius:'10px', border:'1px solid rgba(255,255,255,.07)' }}>
+                    <p style={{ fontSize:'11px', color:'#64748b', margin:'0 0 4px', textTransform:'uppercase', fontWeight:'700' }}>Notes</p>
+                    <p style={{ fontSize:'14px', color:'#e2e8f0', margin:0 }}>{form.notes}</p>
+                  </div>
+                )}
+
+                {/* Total final */}
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'22px', paddingTop:'18px', borderTop:'2px solid rgba(253,216,53,.25)' }}>
+                  <div>
+                    <p style={{ margin:0, fontWeight:'700', color:'#fff', fontSize:'1rem' }}>{isTrial ? 'Cours d\'essai — Total' : 'NET À PAYER'}</p>
+                    {form.location==='home' && !isTrial && (
+                      <p style={{ margin:'3px 0 0', fontSize:'12px', color:'#86efac' }}>
+                        Crédit d'impôt 50% appliqué (−{credit.toFixed(2)} €)
                       </p>
-                    </div>
+                    )}
                   </div>
-                  <div style={styles.pricingDivider}></div>
-                  <div style={styles.futureRatesBox}>
-                    <p style={styles.futureRatesTitle}>📌 Tarifs après le cours d'essai :</p>
-                    <div style={styles.futureRatesList}>
-                      <div style={styles.futureRateItem}>
-                        <span>💻 Cours en ligne</span>
-                        <span style={styles.futureRateValue}>35€/h</span>
-                      </div>
-                      <div style={styles.futureRateItem}>
-                        <span>🏠 Cours à domicile</span>
-                        <span style={styles.futureRateValue}>45€/h</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div style={styles.pricingTotal}>
-                    <span style={styles.totalLabel}>Total à payer aujourd'hui</span>
-                    <span style={styles.totalAmountFree}>0€</span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div style={styles.pricingRow}>
-                    <span style={styles.pricingLabel}>
-                      Cours {formData.location === 'online' ? 'en ligne' : 'à domicile'}
-                    </span>
-                    <span style={styles.pricingValue}>
-                      {pricePerHour}€/h
-                    </span>
-                  </div>
-                  <div style={styles.pricingRow}>
-                    <span style={styles.pricingLabel}>
-                      Durée: {formData.duration || '1'} heure(s)
-                    </span>
-                    <span style={styles.pricingValue}></span>
-                  </div>
-                  <div style={styles.pricingTotal}>
-                    <span style={styles.totalLabel}>Total à payer</span>
-                    <span style={styles.totalAmount}>{totalAmount}€</span>
-                  </div>
-                </>
-              )}
+                  <span style={{ fontSize:'2.4rem', fontWeight:'900', color: isTrial ? '#22c55e' : '#FDD835' }}>
+                    {isTrial ? '0 €' : `${net.toFixed(2)} €`}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Badge paiement sécurisé Stripe */}
+            {!isTrial && (
+              <div style={S.stripeBadge}>
+                <span style={{fontSize:'1.3rem'}}>🔒</span>
+                <div>
+                  <p style={{ margin:'0 0 2px', fontWeight:'700', color:'#e2e8f0', fontSize:'14px' }}>Paiement 100% sécurisé via Stripe</p>
+                  <p style={{ margin:0, color:'#64748b', fontSize:'12px' }}>Vos données bancaires sont chiffrées et jamais stockées sur nos serveurs</p>
+                </div>
+                <div style={S.stripeLogos}>
+                  {['VISA','MC','CB','AMEX'].map(b => (
+                    <span key={b} style={S.stripeLogo}>{b}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {error && <div style={{ ...S.errBox, marginBottom:'1rem' }}><span>⚠️</span>{error}</div>}
+
+            <div style={S.btnRow}>
+              <button onClick={() => setStep(1)} style={S.btnCancel} disabled={loading}>← Modifier</button>
+              <button className="kh-submit" onClick={handleSubmit}
+                style={{ ...S.btnSubmit, ...(loading && { opacity:.6, cursor:'not-allowed' }) }} disabled={loading}>
+                {loading
+                  ? <span style={{display:'flex',alignItems:'center',gap:'10px'}}><span style={S.spinner}/>Traitement...</span>
+                  : isTrial ? '🎁 Confirmer mon cours gratuit' : '💳 Payer maintenant via Stripe'
+                }
+              </button>
             </div>
           </div>
+        )}
+      </main>
 
-          {/* Buttons */}
-          <div style={styles.formButtons}>
-            <button
-              type="button"
-              onClick={() => navigate('parent-dashboard')}
-              style={styles.cancelButton}
-              disabled={loading}
-            >
-              ← Annuler
-            </button>
-            <button
-              type="submit"
-              onClick={handleSubmit}
-              style={{
-                ...styles.submitButton,
-                ...(loading ? { opacity: 0.6, cursor: 'not-allowed' } : {})
-              }}
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <span style={styles.spinner}></span>
-                  <span>Traitement...</span>
-                </>
-              ) : (
-                <>
-                  <span>
-                    {isTrialCourse 
-                      ? '🎁 Réserver mon cours gratuit →' 
-                      : 'Continuer vers le paiement →'}
-                  </span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </section>
+      {showInvoice && <Invoice data={invData} onClose={() => setShowInvoice(false)} />}
     </div>
   );
 };
 
-const styles = {
-  container: {
-    minHeight: '100vh',
-    background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
-    color: '#fff'
-  },
-  header: {
-    background: 'rgba(15, 23, 42, 0.95)',
-    borderBottom: '1px solid rgba(253, 216, 53, 0.2)',
-    padding: '1rem 2rem',
-    position: 'sticky',
-    top: 0,
-    zIndex: 100
-  },
-  headerContent: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: '1rem'
-  },
-  logoSection: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem'
-  },
-  logoCircle: {
-    width: '50px',
-    height: '50px',
-    borderRadius: '50%',
-    background: 'linear-gradient(135deg, #FDD835 0%, #F9A825 100%)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: 'bold',
-    fontSize: '20px',
-    color: '#0F172A'
-  },
-  brandName: {
-    fontSize: '20px',
-    fontWeight: 'bold',
-    margin: 0,
-    background: 'linear-gradient(135deg, #FDD835 0%, #F9A825 100%)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent'
-  },
-  brandTagline: {
-    fontSize: '12px',
-    color: '#94a3b8',
-    margin: 0
-  },
-  headerActions: {
-    display: 'flex',
-    gap: '0.75rem',
-    flexWrap: 'wrap'
-  },
-  backButton: {
-    background: 'rgba(100, 116, 139, 0.2)',
-    border: '1px solid rgba(100, 116, 139, 0.3)',
-    color: '#94a3b8',
-    padding: '0.5rem 1rem',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '14px'
-  },
-  homeButton: {
-    background: 'rgba(253, 216, 53, 0.1)',
-    border: '1px solid rgba(253, 216, 53, 0.3)',
-    color: '#FDD835',
-    padding: '0.5rem 1rem',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '14px'
-  },
-  logoutButton: {
-    background: 'rgba(239, 68, 68, 0.1)',
-    border: '1px solid rgba(239, 68, 68, 0.3)',
-    color: '#ef4444',
-    padding: '0.5rem 1rem',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '14px'
-  },
-  pageHeader: {
-    background: 'linear-gradient(135deg, rgba(253, 216, 53, 0.1) 0%, rgba(249, 168, 37, 0.1) 100%)',
-    borderBottom: '1px solid rgba(253, 216, 53, 0.2)',
-    padding: '2rem'
-  },
-  pageHeaderContent: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    textAlign: 'center'
-  },
-  pageTitle: {
-    fontSize: '32px',
-    fontWeight: 'bold',
-    margin: '0 0 0.5rem 0',
-    color: '#FDD835'
-  },
-  pageSubtitle: {
-    fontSize: '16px',
-    color: '#94a3b8',
-    margin: 0
-  },
-  formSection: {
-    maxWidth: '900px',
-    margin: '2rem auto',
-    padding: '0 2rem 4rem 2rem'
-  },
-  formContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1.5rem'
-  },
-  trialBanner: {
-    background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%)',
-    border: '2px solid rgba(34, 197, 94, 0.4)',
-    borderRadius: '12px',
-    padding: '1.5rem',
-    display: 'flex',
-    gap: '1rem',
-    alignItems: 'flex-start'
-  },
-  trialIcon: {
-    fontSize: '48px',
-    lineHeight: 1
-  },
-  trialContent: {
-    flex: 1
-  },
-  trialTitle: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: '#22c55e',
-    margin: '0 0 0.5rem 0'
-  },
-  trialText: {
-    fontSize: '14px',
-    color: '#86efac',
-    margin: 0,
-    lineHeight: '1.6'
-  },
-  infoBanner: {
-    background: 'rgba(59, 130, 246, 0.1)',
-    border: '2px solid rgba(59, 130, 246, 0.3)',
-    borderRadius: '12px',
-    padding: '1.5rem',
-    display: 'flex',
-    gap: '1rem',
-    alignItems: 'flex-start'
-  },
-  infoIcon: {
-    fontSize: '32px',
-    lineHeight: 1
-  },
-  infoContent: {
-    flex: 1
-  },
-  infoTitle: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    color: '#3b82f6',
-    margin: '0 0 0.5rem 0'
-  },
-  infoText: {
-    fontSize: '14px',
-    color: '#93c5fd',
-    margin: 0,
-    lineHeight: '1.6'
-  },
-  errorBox: {
-    background: 'rgba(239, 68, 68, 0.1)',
-    border: '1px solid rgba(239, 68, 68, 0.3)',
-    borderRadius: '8px',
-    padding: '1rem',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-    color: '#ef4444'
-  },
-  errorIcon: {
-    fontSize: '24px'
-  },
-  formGroup: {
-    background: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: '12px',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    overflow: 'hidden'
-  },
-  formGroupHeader: {
-    background: 'rgba(253, 216, 53, 0.05)',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-    padding: '1rem 1.5rem',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem'
-  },
-  formGroupIcon: {
-    fontSize: '24px'
-  },
-  formGroupTitle: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    margin: 0,
-    color: '#FDD835'
-  },
-  formContent: {
-    padding: '1.5rem'
-  },
-  inputGroup: {
-    marginBottom: '1rem'
-  },
-  label: {
-    display: 'block',
-    fontSize: '14px',
-    color: '#94a3b8',
-    marginBottom: '0.5rem',
-    fontWeight: '500'
-  },
-  input: {
-    width: '100%',
-    padding: '0.75rem',
-    background: 'rgba(255, 255, 255, 0.05)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '8px',
-    color: '#fff',
-    fontSize: '14px',
-    boxSizing: 'border-box'
-  },
-  select: {
-    width: '100%',
-    padding: '0.75rem',
-    background: 'rgba(255, 255, 255, 0.05)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '8px',
-    color: '#fff',
-    fontSize: '14px',
-    cursor: 'pointer',
-    boxSizing: 'border-box'
-  },
-  textarea: {
-    width: '100%',
-    padding: '0.75rem',
-    background: 'rgba(255, 255, 255, 0.05)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '8px',
-    color: '#fff',
-    fontSize: '14px',
-    fontFamily: 'inherit',
-    resize: 'vertical',
-    boxSizing: 'border-box'
-  },
-  gridTwo: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-    gap: '1rem'
-  },
-  gridThree: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '1rem'
-  },
-  radioCard: {
-    background: 'rgba(255, 255, 255, 0.03)',
-    border: '2px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '12px',
-    padding: '1.25rem',
-    cursor: 'pointer',
-    transition: 'all 0.3s',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem'
-  },
-  radioCardSelected: {
-    background: 'rgba(253, 216, 53, 0.1)',
-    border: '2px solid rgba(253, 216, 53, 0.4)',
-    boxShadow: '0 0 20px rgba(253, 216, 53, 0.2)'
-  },
-  radioInput: {
-    width: '20px',
-    height: '20px',
-    cursor: 'pointer'
-  },
-  radioTitle: {
-    fontSize: '16px',
-    fontWeight: 'bold',
-    color: '#fff',
-    margin: '0 0 0.25rem 0'
-  },
-  radioSubtitle: {
-    fontSize: '13px',
-    color: '#94a3b8',
-    margin: 0
-  },
-  pricingCard: {
-    background: 'linear-gradient(135deg, rgba(253, 216, 53, 0.1) 0%, rgba(249, 168, 37, 0.1) 100%)',
-    border: '2px solid rgba(253, 216, 53, 0.3)',
-    borderRadius: '12px',
-    overflow: 'hidden'
-  },
-  pricingHeader: {
-    background: 'rgba(253, 216, 53, 0.1)',
-    borderBottom: '1px solid rgba(253, 216, 53, 0.2)',
-    padding: '1rem 1.5rem',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem'
-  },
-  pricingIcon: {
-    fontSize: '24px'
-  },
-  pricingTitle: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    margin: 0,
-    color: '#FDD835'
-  },
-  pricingContent: {
-    padding: '1.5rem'
-  },
-  freeTrialBox: {
-    background: 'rgba(34, 197, 94, 0.15)',
-    border: '2px solid rgba(34, 197, 94, 0.3)',
-    borderRadius: '12px',
-    padding: '1.25rem',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem',
-    marginBottom: '1rem'
-  },
-  freeTrialIcon: {
-    fontSize: '48px',
-    lineHeight: 1
-  },
-  freeTrialTitle: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    color: '#22c55e',
-    margin: '0 0 0.25rem 0'
-  },
-  freeTrialSubtitle: {
-    fontSize: '14px',
-    color: '#86efac',
-    margin: 0
-  },
-  pricingDivider: {
-    height: '1px',
-    background: 'rgba(255, 255, 255, 0.1)',
-    margin: '1rem 0'
-  },
-  futureRatesBox: {
-    background: 'rgba(255, 255, 255, 0.03)',
-    borderRadius: '8px',
-    padding: '1rem',
-    marginBottom: '1rem'
-  },
-  futureRatesTitle: {
-    fontSize: '14px',
-    fontWeight: 'bold',
-    color: '#cbd5e1',
-    margin: '0 0 0.75rem 0'
-  },
-  futureRatesList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem'
-  },
-  futureRateItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    fontSize: '13px',
-    color: '#94a3b8'
-  },
-  futureRateValue: {
-    fontWeight: 'bold',
-    color: '#FDD835'
-  },
-  pricingRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '0.75rem 0',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
-  },
-  pricingLabel: {
-    fontSize: '14px',
-    color: '#94a3b8'
-  },
-  pricingValue: {
-    fontSize: '16px',
-    fontWeight: 'bold',
-    color: '#FDD835'
-  },
-  pricingTotal: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '1rem 0 0 0',
-    marginTop: '0.5rem',
-    borderTop: '2px solid rgba(253, 216, 53, 0.3)'
-  },
-  totalLabel: {
-    fontSize: '16px',
-    fontWeight: 'bold',
-    color: '#fff'
-  },
-  totalAmount: {
-    fontSize: '32px',
-    fontWeight: 'bold',
-    color: '#FDD835'
-  },
-  totalAmountFree: {
-    fontSize: '32px',
-    fontWeight: 'bold',
-    color: '#22c55e'
-  },
-  formButtons: {
-    display: 'flex',
-    gap: '1rem',
-    marginTop: '1rem'
-  },
-  cancelButton: {
-    flex: 1,
-    padding: '1rem 2rem',
-    background: 'rgba(100, 116, 139, 0.2)',
-    border: '1px solid rgba(100, 116, 139, 0.3)',
-    borderRadius: '8px',
-    color: '#94a3b8',
-    fontSize: '16px',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    transition: 'all 0.3s'
-  },
-  submitButton: {
-    flex: 2,
-    padding: '1rem 2rem',
-    background: 'linear-gradient(135deg, #FDD835 0%, #F9A825 100%)',
-    border: 'none',
-    borderRadius: '8px',
-    color: '#0F172A',
-    fontSize: '16px',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    transition: 'all 0.3s',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '0.5rem'
-  },
-  spinner: {
-    width: '16px',
-    height: '16px',
-    border: '2px solid rgba(15, 23, 42, 0.2)',
-    borderTop: '2px solid #0F172A',
-    borderRadius: '50%',
-    animation: 'spin 0.8s linear infinite'
+export default AppointmentPage;
+
+// ─── CSS GLOBAL ──────────────────────────────────────────────────────────────
+const optStyle = { color:'#111', background:'#fff' };
+
+const css = `
+  @keyframes fadeInUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .fade-in { animation: fadeInUp .35s ease; }
+  .kh-inp, .kh-sel { transition: border-color .2s, box-shadow .2s; }
+  .kh-inp:focus, .kh-sel:focus {
+    outline: none !important;
+    border-color: rgba(253,216,53,.65) !important;
+    box-shadow: 0 0 0 3px rgba(253,216,53,.13) !important;
   }
+  .kh-inp::placeholder { color: rgba(148,163,184,.55); }
+  .kh-radio { transition: border-color .2s, background .2s, box-shadow .2s; cursor: pointer; }
+  .kh-radio:hover { border-color: rgba(253,216,53,.45) !important; background: rgba(253,216,53,.05) !important; }
+  .kh-submit { transition: transform .2s, box-shadow .2s; }
+  .kh-submit:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(253,216,53,.45) !important; }
+  @media print {
+    body * { visibility: hidden; }
+    #invoice-print, #invoice-print * { visibility: visible; }
+    #invoice-print { position: fixed; inset: 0; background: #fff; }
+  }
+`;
+
+// ─── STYLES PAGE ─────────────────────────────────────────────────────────────
+const S = {
+  page:       { minHeight:'100vh', background:'linear-gradient(160deg,#080d18 0%,#0f1624 55%,#0a1120 100%)', color:'#fff', fontFamily:"'Segoe UI',system-ui,sans-serif" },
+
+  header:     { background:'rgba(8,13,24,.97)', borderBottom:'1px solid rgba(253,216,53,.15)', padding:'1rem 2rem', position:'sticky', top:0, zIndex:100, backdropFilter:'blur(14px)' },
+  headerIn:   { maxWidth:'1100px', margin:'0 auto', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'12px' },
+  brand:      { display:'flex', alignItems:'center', gap:'14px' },
+  logoBadge:  { width:'46px', height:'46px', borderRadius:'12px', background:'linear-gradient(135deg,#FDD835,#F59E0B)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'900', fontSize:'17px', color:'#080d18', boxShadow:'0 4px 14px rgba(253,216,53,.35)' },
+  brandName:  { fontSize:'17px', fontWeight:'900', margin:0, background:'linear-gradient(135deg,#FDD835,#FFC107)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' },
+  brandSub:   { fontSize:'11px', color:'#475569', margin:0 },
+  navBtns:    { display:'flex', gap:'8px', flexWrap:'wrap' },
+  btnGhost:   { padding:'8px 16px', background:'rgba(100,116,139,.12)', border:'1px solid rgba(100,116,139,.28)', color:'#94a3b8', borderRadius:'8px', cursor:'pointer', fontSize:'13px', fontWeight:'600' },
+  btnGold:    { padding:'8px 16px', background:'rgba(253,216,53,.1)', border:'1px solid rgba(253,216,53,.3)', color:'#FDD835', borderRadius:'8px', cursor:'pointer', fontSize:'13px', fontWeight:'600' },
+  btnRed:     { padding:'8px 16px', background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.28)', color:'#ef4444', borderRadius:'8px', cursor:'pointer', fontSize:'13px', fontWeight:'600' },
+
+  hero:       { background:'linear-gradient(135deg,rgba(253,216,53,.07),rgba(139,58,147,.07))', borderBottom:'1px solid rgba(253,216,53,.1)', padding:'3rem 2rem 2.5rem' },
+  heroIn:     { maxWidth:'1100px', margin:'0 auto', textAlign:'center' },
+  heroPill:   { display:'inline-block', padding:'5px 20px', background:'rgba(253,216,53,.1)', border:'1px solid rgba(253,216,53,.28)', borderRadius:'999px', fontSize:'11px', fontWeight:'800', letterSpacing:'.12em', color:'#FDD835', marginBottom:'16px' },
+  heroTitle:  { fontSize:'clamp(1.9rem,4vw,2.9rem)', fontWeight:'900', margin:'0 0 12px', background:'linear-gradient(135deg,#fff 30%,#FDD835)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' },
+  heroSub:    { color:'#64748b', fontSize:'15px', margin:'0 0 2.2rem' },
+  steps:      { display:'flex', alignItems:'center', justifyContent:'center', flexWrap:'wrap', gap:'0' },
+  stepItem:   { display:'flex', alignItems:'center', gap:'8px' },
+  stepBubble: { width:'32px', height:'32px', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'13px', fontWeight:'800', flexShrink:0, transition:'all .3s' },
+  stepActive: { background:'#FDD835', color:'#080d18', boxShadow:'0 0 18px rgba(253,216,53,.55)' },
+  stepDone:   { background:'rgba(34,197,94,.15)', border:'2px solid #22c55e', color:'#22c55e' },
+  stepIdle:   { background:'rgba(255,255,255,.05)', border:'2px solid rgba(255,255,255,.12)', color:'#475569' },
+  stepLbl:    { fontSize:'13px', fontWeight:'600', color:'#475569', whiteSpace:'nowrap' },
+  stepLine:   { width:'44px', height:'2px', background:'rgba(255,255,255,.08)', margin:'0 8px', borderRadius:'2px', transition:'background .3s' },
+
+  main:       { maxWidth:'800px', margin:'0 auto', padding:'2rem 1.5rem 5rem' },
+
+  bannerGreen:{ background:'linear-gradient(135deg,rgba(34,197,94,.13),rgba(16,185,129,.08))', border:'2px solid rgba(34,197,94,.32)', borderRadius:'16px', padding:'1.4rem', display:'flex', alignItems:'center', gap:'1.2rem', marginBottom:'1.5rem' },
+  bannerBlue: { background:'rgba(59,130,246,.07)', border:'1px solid rgba(59,130,246,.22)', borderRadius:'14px', padding:'1.2rem 1.4rem', display:'flex', alignItems:'center', gap:'1rem', marginBottom:'1.5rem' },
+  errBox:     { background:'rgba(239,68,68,.09)', border:'1px solid rgba(239,68,68,.28)', borderRadius:'10px', padding:'12px 16px', display:'flex', alignItems:'center', gap:'10px', color:'#f87171', fontSize:'14px', marginBottom:'1.5rem' },
+
+  card:       { background:'rgba(255,255,255,.038)', border:'1px solid rgba(255,255,255,.075)', borderRadius:'18px', overflow:'hidden', marginBottom:'1.4rem', backdropFilter:'blur(4px)' },
+  cardHdr:    { background:'rgba(253,216,53,.045)', borderBottom:'1px solid rgba(255,255,255,.065)', padding:'14px 22px', display:'flex', alignItems:'center', gap:'10px' },
+  cardIco:    { fontSize:'20px' },
+  cardTtl:    { margin:0, fontSize:'15px', fontWeight:'800', color:'#FDD835' },
+  cardBdy:    { padding:'1.4rem 1.5rem' },
+
+  lbl:        { display:'block', fontSize:'12px', color:'#94a3b8', marginBottom:'6px', fontWeight:'700', letterSpacing:'.04em', textTransform:'uppercase' },
+  iWrap:      { marginBottom:'14px' },
+  inp:        { width:'100%', padding:'11px 14px', background:'rgba(255,255,255,.055)', border:'1px solid rgba(255,255,255,.1)', borderRadius:'10px', color:'#f1f5f9', fontSize:'14px', boxSizing:'border-box' },
+  sel:        { width:'100%', padding:'11px 14px', background:'rgba(255,255,255,.055)', border:'1px solid rgba(255,255,255,.1)', borderRadius:'10px', color:'#f1f5f9', fontSize:'14px', boxSizing:'border-box', cursor:'pointer' },
+  g2:         { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))', gap:'14px' },
+  g3:         { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(165px,1fr))', gap:'14px' },
+
+  tariffBox:  { background:'rgba(253,216,53,.055)', border:'1px solid rgba(253,216,53,.18)', borderRadius:'12px', padding:'14px 16px', marginTop:'6px' },
+  tariffTitle:{ margin:'0 0 10px', fontSize:'13px', color:'#FDD835', fontWeight:'700' },
+  tariffGrid: { display:'flex', flexWrap:'wrap', gap:'8px' },
+  tariffCell: { flex:'1 1 150px', background:'rgba(255,255,255,.04)', borderRadius:'8px', padding:'8px 12px', display:'flex', justifyContent:'space-between', alignItems:'center', border:'1px solid rgba(255,255,255,.065)' },
+  tariffLbl:  { fontSize:'12px', color:'#94a3b8' },
+  tariffVal:  { fontSize:'13px', fontWeight:'800', color:'#FDD835' },
+
+  radioCard:  { background:'rgba(255,255,255,.03)', border:'2px solid rgba(255,255,255,.09)', borderRadius:'14px', padding:'1.2rem', display:'flex', alignItems:'flex-start', gap:'12px' },
+  radioOn:    { background:'rgba(253,216,53,.07)', border:'2px solid rgba(253,216,53,.42)', boxShadow:'0 0 22px rgba(253,216,53,.12)' },
+  radioCircle:{ width:'20px', height:'20px', borderRadius:'50%', border:'2px solid rgba(253,216,53,.45)', flexShrink:0, marginTop:'3px', display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.2)' },
+  radioDot:   { width:'10px', height:'10px', borderRadius:'50%', background:'#FDD835' },
+  radioTtl:   { margin:'0 0 3px', fontWeight:'800', color:'#f1f5f9', fontSize:'15px' },
+  radioDesc:  { margin:'0 0 5px', fontSize:'12px', color:'#475569' },
+  radioPrice: { margin:'3px 0 0', fontSize:'14px', fontWeight:'800', color:'#FDD835' },
+
+  priceCard:  { background:'linear-gradient(135deg,rgba(253,216,53,.075),rgba(249,115,22,.05))', border:'2px solid rgba(253,216,53,.22)', borderRadius:'18px', overflow:'hidden', marginBottom:'1.8rem' },
+  priceHdr:   { background:'rgba(253,216,53,.06)', borderBottom:'1px solid rgba(253,216,53,.13)', padding:'14px 20px', display:'flex', alignItems:'center', gap:'12px' },
+  priceBdy:   { padding:'1.4rem 1.5rem' },
+  freeRow:    { display:'flex', alignItems:'center', gap:'18px', background:'rgba(34,197,94,.09)', border:'2px solid rgba(34,197,94,.22)', borderRadius:'12px', padding:'1.1rem' },
+  priceRow:   { display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,.055)' },
+  priceK:     { fontSize:'14px', color:'#94a3b8' },
+  priceV:     { fontSize:'14px', fontWeight:'700', color:'#e2e8f0' },
+  priceTotal: { display:'flex', justifyContent:'space-between', alignItems:'center', paddingTop:'14px', marginTop:'8px' },
+  invBtn:     { marginLeft:'auto', padding:'6px 14px', background:'rgba(255,255,255,.065)', border:'1px solid rgba(255,255,255,.13)', borderRadius:'8px', color:'#e2e8f0', fontSize:'12px', fontWeight:'600', cursor:'pointer' },
+
+  stripeBadge:{ display:'flex', alignItems:'center', gap:'16px', background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', borderRadius:'14px', padding:'14px 18px', marginBottom:'1.4rem', flexWrap:'wrap' },
+  stripeLogos:{ display:'flex', gap:'6px', marginLeft:'auto', flexWrap:'wrap' },
+  stripeLogo: { padding:'4px 10px', background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.12)', borderRadius:'6px', fontSize:'11px', fontWeight:'800', color:'#94a3b8', letterSpacing:'.04em' },
+
+  recapGrid:  { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:'10px' },
+  recapCell:  { background:'rgba(255,255,255,.04)', borderRadius:'10px', padding:'11px 14px', border:'1px solid rgba(255,255,255,.065)' },
+  recapK:     { display:'block', fontSize:'10px', color:'#475569', fontWeight:'800', letterSpacing:'.07em', textTransform:'uppercase', marginBottom:'4px' },
+  recapV:     { display:'block', fontSize:'14px', fontWeight:'700', color:'#f1f5f9' },
+
+  btnRow:     { display:'flex', gap:'12px', marginTop:'6px' },
+  btnCancel:  { flex:1, padding:'13px 18px', background:'rgba(100,116,139,.13)', border:'1px solid rgba(100,116,139,.22)', borderRadius:'12px', color:'#94a3b8', fontSize:'14px', fontWeight:'700', cursor:'pointer' },
+  btnSubmit:  { flex:2, padding:'13px 18px', background:'linear-gradient(135deg,#FDD835,#F59E0B)', border:'none', borderRadius:'12px', color:'#080d18', fontSize:'15px', fontWeight:'900', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px', boxShadow:'0 6px 22px rgba(253,216,53,.28)' },
+  spinner:    { width:'16px', height:'16px', border:'3px solid rgba(8,13,24,.2)', borderTop:'3px solid #080d18', borderRadius:'50%', animation:'spin .7s linear infinite', flexShrink:0 },
 };
 
-export default AppointmentPage;
+// ─── STYLES FACTURE ───────────────────────────────────────────────────────────
+const I = {
+  overlay:   { position:'fixed', inset:0, background:'rgba(0,0,0,.8)', backdropFilter:'blur(8px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000, padding:'20px' },
+  modal:     { background:'#fff', borderRadius:'16px', maxWidth:'700px', width:'100%', maxHeight:'90vh', overflowY:'auto', padding:'36px 40px', color:'#111', boxShadow:'0 30px 80px rgba(0,0,0,.7)' },
+  hdr:       { display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'12px', marginBottom:'20px' },
+  hdrLeft:   { display:'flex', alignItems:'center', gap:'14px' },
+  logo:      { width:'48px', height:'48px', borderRadius:'10px', background:'linear-gradient(135deg,#FDD835,#F59E0B)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'900', fontSize:'18px', color:'#080d18' },
+  co:        { margin:'0 0 2px', fontSize:'18px', fontWeight:'900', color:'#080d18' },
+  coSub:     { margin:0, fontSize:'11px', color:'#6b7280' },
+  hdrRight:  { textAlign:'right' },
+  facLabel:  { margin:0, fontSize:'22px', fontWeight:'900', color:'#F59E0B', letterSpacing:'.05em' },
+  facNum:    { margin:'3px 0', fontSize:'14px', fontWeight:'700', color:'#111' },
+  facDate:   { margin:0, fontSize:'12px', color:'#6b7280' },
+  div:       { height:'1px', background:'#e5e7eb', margin:'18px 0' },
+  twoCol:    { display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px', flexWrap:'wrap' },
+  secLabel:  { margin:'0 0 8px', fontSize:'10px', fontWeight:'800', letterSpacing:'.1em', color:'#9ca3af', textTransform:'uppercase' },
+  clientName:{ margin:'0 0 3px', fontSize:'15px', fontWeight:'700', color:'#111' },
+  clientInfo:{ margin:'0 0 3px', fontSize:'13px', color:'#374151' },
+  table:     { width:'100%', borderCollapse:'collapse' },
+  thead:     { background:'#f9fafb' },
+  th:        { padding:'10px 12px', textAlign:'left', fontSize:'10px', fontWeight:'800', letterSpacing:'.08em', color:'#6b7280', textTransform:'uppercase', borderBottom:'2px solid #e5e7eb' },
+  thR:       { padding:'10px 12px', textAlign:'right', fontSize:'10px', fontWeight:'800', letterSpacing:'.08em', color:'#6b7280', textTransform:'uppercase', borderBottom:'2px solid #e5e7eb' },
+  td:        { padding:'12px', fontSize:'13px', color:'#374151', borderBottom:'1px solid #f3f4f6' },
+  tdR:       { padding:'12px', fontSize:'13px', color:'#374151', textAlign:'right', borderBottom:'1px solid #f3f4f6' },
+  totals:    { maxWidth:'320px', marginLeft:'auto', display:'flex', flexDirection:'column', gap:'8px' },
+  totRow:    { display:'flex', justifyContent:'space-between', fontSize:'13px', color:'#374151', padding:'4px 0', borderBottom:'1px solid #f3f4f6' },
+  grandRow:  { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 0 4px', borderTop:'2px solid #111', marginTop:'4px' },
+  taxNote:   { background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'8px', padding:'10px 12px', fontSize:'12px', color:'#166534', marginTop:'10px' },
+  legal:     { fontSize:'10px', color:'#9ca3af', lineHeight:'1.6', textAlign:'center' },
+  btns:      { display:'flex', justifyContent:'flex-end', gap:'10px', marginTop:'20px', paddingTop:'16px', borderTop:'1px solid #e5e7eb' },
+  btnClose:  { padding:'10px 22px', background:'#f3f4f6', border:'1px solid #e5e7eb', borderRadius:'8px', cursor:'pointer', fontSize:'14px', fontWeight:'600', color:'#374151' },
+  btnPrint:  { padding:'10px 22px', background:'linear-gradient(135deg,#FDD835,#F59E0B)', border:'none', borderRadius:'8px', cursor:'pointer', fontSize:'14px', fontWeight:'700', color:'#080d18' },
+};
