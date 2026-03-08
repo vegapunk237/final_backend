@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 
-const API_URL = 'https://final-backend-swart.vercel.app/api';
+const API_URL = 'https://dollar5665.pythonanywhere.com/api';
 
 // ─── DONNÉES ─────────────────────────────────────────────────────────────────
 
