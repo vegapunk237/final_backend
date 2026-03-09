@@ -5,7 +5,10 @@ const API_URL = 'https://dollar5665.pythonanywhere.com/api';
 // ─── DONNÉES ─────────────────────────────────────────────────────────────────
 
 const LEVELS = [
-  { value: 'Primaire',   label: 'PRIMAIRE',        group: 'Primaire'  },
+  { value: 'CM1',   label: 'CM1',        group: 'Primaire'  },
+  { value: 'CE2',   label: 'CE2',        group: 'Primaire'  },
+  { value: 'CE1',   label: 'CE1',        group: 'Primaire'  },
+  { value: 'CP',   label: 'CP',        group: 'Primaire'  },
   { value: '6ème',       label: '6ÈME',            group: 'Collège'   },
   { value: '5ème',       label: '5ÈME',            group: 'Collège'   },
   { value: '4ème',       label: '4ÈME',            group: 'Collège'   },
@@ -35,8 +38,8 @@ const TIME_SLOTS = [
 
 // ─── TARIFICATION ─────────────────────────────────────────────────────────────
 const PRICE_TABLE = {
-  online: { Primaire:20, Collège:22.5, Lycée:35, Supérieur:30, Autre:30 },
-  home:   { Primaire:20, Collège:22.5, Lycée:35, Supérieur:30, Autre:30 },
+  online: { Primaire:20, Collège:22.5, Lycée:25, Supérieur:30, Autre:30 },
+  home:   { Primaire:20, Collège:45, Lycée:50, Supérieur:60, Autre:30 },
 };
 const TAX_CREDIT = 0.5;
 
