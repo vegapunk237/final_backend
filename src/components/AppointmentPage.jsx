@@ -284,7 +284,7 @@ const AppointmentPage = ({ navigate, user, onLogout }) => {
         isTrialCourse: isTrial,
         // ✅ IMPORTANT : cours payant = "pending_payment" jusqu'à confirmation Stripe
         // Le webhook Stripe changera ce statut en "confirmed" après paiement réussi
-        status: isTrial ? 'pending' : 'pending_payment',
+        status: isTrial ? 'pending' : 'pending',
       };
 
       const r = await fetch(`${API_URL}/appointments/`, {

@@ -1303,7 +1303,7 @@ def create_checkout_session(request):
         )
 
         # ── Sauvegarder le session_id Stripe dans le RDV ──────────────────
-        appointment.status            = 'pending_payment'
+        appointment.status            = 'pending'
         appointment.stripe_session_id = session.id
         appointment.save(update_fields=['status', 'stripe_session_id'])
 
@@ -1596,7 +1596,7 @@ def create_appointment(request):
             # ✅ Statut selon le type de cours
             # pending_payment = en attente de paiement Stripe (cours payant)
             # pending         = cours gratuit, en attente de validation admin
-            status        = 'pending' if is_trial else 'pending_payment',
+            status        = 'pending' if is_trial else 'pending',
         )
 
         logger.info(f"[CREATE] RDV #{appointment.id} créé — trial: {is_trial} — status: {appointment.status}")
