@@ -95,9 +95,37 @@ const TeacherSignup = ({ navigate }) => {
 ];
 
   const schoolsList = [
-    'HEC', 'ESSEC', 'Sciences Po Paris', 'Polytechnique', 'ENS',
-    'CentraleSupélec', 'INSEAD', 'Sorbonne', 'Dauphine', 'Autre',
-  ];
+  // Écoles d'origine
+  'HEC', 'ESSEC', 'Sciences Po Paris', 'Polytechnique', 'ENS',
+  'CentraleSupélec', 'INSEAD', 'Sorbonne', 'Dauphine', 'Autre',
+
+  // Image 6
+  'AEMO', 'Agroparistech', 'AMU - Eco-droit', 'AMU - Neuronautes',
+  'Audencia Nantes', 'Centrale Lille', 'Centrale Lyon', 'Centrale Marseille',
+  'Centrale Nantes', 'Centrale Supéles',
+
+  // Image 5
+  'EBI', 'ECE', 'EDHEC', 'EIVP', 'EM Lyon', 'ENAC', 'ENS Ulm',
+  'ENSAE', 'ENSAM Bordeaux', 'ENSAM Paris', 'ENSC', 'ENSEGID',
+
+  // Image 4
+  'ENSEIRB matmeca', 'ENSMAC', 'ENSTA', 'ENSTBB', 'ENVT', 'EPF',
+  'EPISEN', 'EPITA', 'ESCP', 'ESF', 'ESIEE', 'ESILV', 'ESME - Sudria',
+
+  // Image 3
+  'ESPCI', 'ESTACA', 'ESTP', 'ICAM', 'IMT Atlantique',
+  'IMT Atlantique Nantes', 'INSA Lyon', 'IPSA', 'ISAE-SUPMECA', 'ISEP', 'ISIT',
+
+  // Image 2
+  'ISUP', 'Magistère Bordeaux', 'Mines', 'Mines de Paris',
+  'Médecine Paris cité', 'Polytech Marseille', 'Ponts et chaussées', 'PSL',
+  'Sciences agro Bordeaux', 'Sciences Po Aix', 'Sciences Po Bordeaux',
+  'Sciences Po Lille', 'Sciences Po Lyon',
+
+  // Image 1
+  'SciencesPoSaint-Germain', 'SUPAERO', 'Supaéro Toulouse',
+  'Télécom', 'Université Catholique de Lille', 'Université scientifique',
+];
 
   const documentTypes = [
     { id: 'identity',  label: "Pièce d'identité",              required: true  },
