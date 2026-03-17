@@ -51,9 +51,48 @@ const TeacherSignup = ({ navigate }) => {
   ];
 
   const zonesList = [
-    'Paris', 'Marseille', 'Lyon', 'Toulouse', 'Nice',
-    'Nantes', 'Bordeaux', 'Strasbourg', 'Lille', 'Rennes',
-  ];
+  // Villes d'origine
+  'Paris', 'Marseille', 'Lyon', 'Toulouse', 'Nice',
+  'Nantes', 'Bordeaux', 'Strasbourg', 'Lille', 'Rennes',
+
+  // Image 8
+  'Troyes', 'Amiens', 'Levallois-Perret', 'Bondy', 'Brest',
+  'La Rochelle', 'Tours', 'Montreuil', 'Cholet', 'Corbeil-Essonnes',
+  'Melun', 'Le Havre',
+
+  // Image 7
+  'Bourg-en-Bresse', 'Metz', 'Colmar', 'Douai', 'Vannes',
+  'Quimper', 'Alfortville', 'Suresnes', 'Mérignac', 'Châteauroux',
+  'Beauvais', 'Valenciennes',
+
+  // Image 6
+  'Vitry-sur-Seine', 'Rouen', 'Bourges', 'Orléans', 'Sète',
+  'Albi', 'Annecy', 'Clamart', 'Dijon', 'Rueil-Malmaison',
+  'Noisy-le-Sec',
+
+  // Image 5
+  'Perpignan', 'Noisy-le-Grand', 'Montpellier', 'Béziers', 'Carcassonne',
+  'Bayonne', 'Chambéry', 'Puteaux', 'Limoges', 'Mulhouse',
+  'Ivry-sur-Seine', 'Clermont-Ferrand', 'Nanterre',
+
+  // Image 4
+  'Toulon', 'Versailles', 'Argenteuil', 'Aix-en-Provence', 'Tarbes',
+  'Créteil', 'Grenoble', 'Bobigny', 'Le Mans', 'Caen',
+  'Roubaix', 'Niort', 'Clichy',
+
+  // Image 3
+  'Villeurbanne', 'Nîmes', 'Neuilly-sur-Seine', 'Angoulême', 'Narbonne',
+  'Aubervilliers', 'Boulogne-Billancourt', 'Pau', 'Boulogne-sur-Mer',
+  'Cergy', 'Évry', 'Reims', 'Valence',
+
+  // Image 2
+  'Issy-les-Moulineaux', 'Poitiers', 'Dunkerque', 'Angers', 'Besançon',
+  'Massy', 'Chartres', 'Compiègne', 'Blois', 'Nancy',
+  'Calais', 'Fontenay-sous-Bois',
+
+  // Image 1
+  'Rosny-sous-Bois',
+];
 
   const schoolsList = [
     'HEC', 'ESSEC', 'Sciences Po Paris', 'Polytechnique', 'ENS',
