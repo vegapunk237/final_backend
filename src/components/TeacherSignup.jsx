@@ -36,6 +36,9 @@ const TeacherSignup = ({ navigate }) => {
     acceptTerms: false,
     acceptVerification: false,
     acceptProfileSharing: false,
+
+    zoneCustom: '',
+    schoolCustom: '',
   });
 
   const [uploadedDocuments, setUploadedDocuments] = useState([]);
@@ -365,71 +368,96 @@ const TeacherSignup = ({ navigate }) => {
               ÉTAPE 1 — Informations personnelles
           ══════════════════════════════════════════════ */}
           {currentStep === 1 && (
-            <div style={styles.stepContent}>
-              <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>
-                  <span style={styles.sectionIcon}>👤</span>
-                  Informations personnelles
-                </h3>
-                <div style={styles.formGrid}>
-                  <div style={styles.inputGroup}>
-                    <label style={styles.label}>📝 Nom complet *</label>
-                    <input type="text" name="fullName" value={formData.fullName}
-                      onChange={handleChange} style={styles.input}
-                      placeholder="Votre nom et prénom" disabled={loading} />
-                  </div>
+  <div style={styles.stepContent}>
+    <div style={styles.section}>
+      <h3 style={styles.sectionTitle}>
+        <span style={styles.sectionIcon}>👤</span>
+        Informations personnelles
+      </h3>
+      <div style={styles.formGrid}>
+        <div style={styles.inputGroup}>
+          <label style={styles.label}>📝 Nom complet *</label>
+          <input type="text" name="fullName" value={formData.fullName}
+            onChange={handleChange} style={styles.input}
+            placeholder="Votre nom et prénom" disabled={loading} />
+        </div>
+        <div style={styles.inputRow}>
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>📧 Email *</label>
+            <input type="email" name="email" value={formData.email}
+              onChange={handleChange} style={styles.input}
+              placeholder="votre@email.com" disabled={loading} />
+          </div>
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>📱 Téléphone *</label>
+            <input type="tel" name="phone" value={formData.phone}
+              onChange={handleChange} style={styles.input}
+              placeholder="06 12 34 56 78" disabled={loading} />
+          </div>
+        </div>
+        <div style={styles.inputRow}>
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>🔒 Mot de passe *</label>
+            <input type="password" name="password" value={formData.password}
+              onChange={handleChange} style={styles.input}
+              placeholder="••••••••" disabled={loading} />
+          </div>
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>🔒 Confirmer *</label>
+            <input type="password" name="confirmPassword" value={formData.confirmPassword}
+              onChange={handleChange} style={styles.input}
+              placeholder="••••••••" disabled={loading} />
+          </div>
+        </div>
 
-                  <div style={styles.inputRow}>
-                    <div style={styles.inputGroup}>
-                      <label style={styles.label}>📧 Email *</label>
-                      <input type="email" name="email" value={formData.email}
-                        onChange={handleChange} style={styles.input}
-                        placeholder="votre@email.com" disabled={loading} />
-                    </div>
-                    <div style={styles.inputGroup}>
-                      <label style={styles.label}>📱 Téléphone *</label>
-                      <input type="tel" name="phone" value={formData.phone}
-                        onChange={handleChange} style={styles.input}
-                        placeholder="06 12 34 56 78" disabled={loading} />
-                    </div>
-                  </div>
-
-                  <div style={styles.inputRow}>
-                    <div style={styles.inputGroup}>
-                      <label style={styles.label}>🔒 Mot de passe *</label>
-                      <input type="password" name="password" value={formData.password}
-                        onChange={handleChange} style={styles.input}
-                        placeholder="••••••••" disabled={loading} />
-                    </div>
-                    <div style={styles.inputGroup}>
-                      <label style={styles.label}>🔒 Confirmer *</label>
-                      <input type="password" name="confirmPassword" value={formData.confirmPassword}
-                        onChange={handleChange} style={styles.input}
-                        placeholder="••••••••" disabled={loading} />
-                    </div>
-                  </div>
-
-                  <div style={styles.inputGroup}>
-                    <label style={styles.label}>📍 Zone d'enseignement *</label>
-                    <select name="zone" value={formData.zone} onChange={handleChange}
-                      style={styles.input} disabled={loading}>
-                      <option value="">Sélectionner une zone</option>
-                      {zonesList.map(z => <option key={z} value={z}>{z}</option>)}
-                    </select>
-                  </div>
-
-                  <div style={styles.inputGroup}>
-                    <label style={styles.label}>🏫 École / Université</label>
-                    <select name="school" value={formData.school} onChange={handleChange}
-                      style={styles.input} disabled={loading}>
-                      <option value="">Sélectionner (optionnel)</option>
-                      {schoolsList.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
+        {/* Zone d'enseignement */}
+        <div style={styles.inputGroup}>
+          <label style={styles.label}>📍 Zone d'enseignement *</label>
+          <select name="zone" value={formData.zone} onChange={handleChange}
+            style={styles.input} disabled={loading}>
+            <option value="">Sélectionner une zone</option>
+            {zonesList.map(z => <option key={z} value={z}>{z}</option>)}
+            <option value="Autre">Autre</option>
+          </select>
+          {formData.zone === 'Autre' && (
+            <input
+              type="text"
+              name="zoneCustom"
+              value={formData.zoneCustom || ''}
+              onChange={handleChange}
+              style={{ ...styles.input, marginTop: '8px' }}
+              placeholder="Précisez votre zone..."
+              disabled={loading}
+            />
           )}
+        </div>
+
+        {/* École / Université */}
+        <div style={styles.inputGroup}>
+          <label style={styles.label}>🏫 École / Université</label>
+          <select name="school" value={formData.school} onChange={handleChange}
+            style={styles.input} disabled={loading}>
+            <option value="">Sélectionner (optionnel)</option>
+            {schoolsList.map(s => <option key={s} value={s}>{s}</option>)}
+            <option value="Autre">Autre</option>
+          </select>
+          {formData.school === 'Autre' && (
+            <input
+              type="text"
+              name="schoolCustom"
+              value={formData.schoolCustom || ''}
+              onChange={handleChange}
+              style={{ ...styles.input, marginTop: '8px' }}
+              placeholder="Précisez votre école ou université..."
+              disabled={loading}
+            />
+          )}
+        </div>
+
+      </div>
+    </div>
+  </div>
+)}
 
           {/* ══════════════════════════════════════════════
               ÉTAPE 2 — Qualifications
