@@ -39,12 +39,19 @@ const TeacherSignup = ({ navigate }) => {
 
     zoneCustom: '',
     schoolCustom: '',
+
+    // Étape 4 — Créneaux d'entretien
+    interviewSlots: [
+      { date: '', time: '' },
+      { date: '', time: '' },
+      { date: '', time: '' },
+    ],
   });
 
   const [uploadedDocuments, setUploadedDocuments] = useState([]);
-  const [submitted, setSubmitted]   = useState(false);
-  const [loading, setLoading]       = useState(false);
-  const [error, setError]           = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState('');
 
   // ─── Données statiques ────────────────────────────────────────────────────
   const subjectsList = [
@@ -54,94 +61,73 @@ const TeacherSignup = ({ navigate }) => {
   ];
 
   const zonesList = [
-  // Villes d'origine
-  'Paris', 'Marseille', 'Lyon', 'Toulouse', 'Nice',
-  'Nantes', 'Bordeaux', 'Strasbourg', 'Lille', 'Rennes',
-
-  // Image 8
-  'Troyes', 'Amiens', 'Levallois-Perret', 'Bondy', 'Brest',
-  'La Rochelle', 'Tours', 'Montreuil', 'Cholet', 'Corbeil-Essonnes',
-  'Melun', 'Le Havre',
-
-  // Image 7
-  'Bourg-en-Bresse', 'Metz', 'Colmar', 'Douai', 'Vannes',
-  'Quimper', 'Alfortville', 'Suresnes', 'Mérignac', 'Châteauroux',
-  'Beauvais', 'Valenciennes',
-
-  // Image 6
-  'Vitry-sur-Seine', 'Rouen', 'Bourges', 'Orléans', 'Sète',
-  'Albi', 'Annecy', 'Clamart', 'Dijon', 'Rueil-Malmaison',
-  'Noisy-le-Sec',
-
-  // Image 5
-  'Perpignan', 'Noisy-le-Grand', 'Montpellier', 'Béziers', 'Carcassonne',
-  'Bayonne', 'Chambéry', 'Puteaux', 'Limoges', 'Mulhouse',
-  'Ivry-sur-Seine', 'Clermont-Ferrand', 'Nanterre',
-
-  // Image 4
-  'Toulon', 'Versailles', 'Argenteuil', 'Aix-en-Provence', 'Tarbes',
-  'Créteil', 'Grenoble', 'Bobigny', 'Le Mans', 'Caen',
-  'Roubaix', 'Niort', 'Clichy',
-
-  // Image 3
-  'Villeurbanne', 'Nîmes', 'Neuilly-sur-Seine', 'Angoulême', 'Narbonne',
-  'Aubervilliers', 'Boulogne-Billancourt', 'Pau', 'Boulogne-sur-Mer',
-  'Cergy', 'Évry', 'Reims', 'Valence',
-
-  // Image 2
-  'Issy-les-Moulineaux', 'Poitiers', 'Dunkerque', 'Angers', 'Besançon',
-  'Massy', 'Chartres', 'Compiègne', 'Blois', 'Nancy',
-  'Calais', 'Fontenay-sous-Bois',
-
-  // Image 1
-  'Rosny-sous-Bois',
-];
+    'Paris', 'Marseille', 'Lyon', 'Toulouse', 'Nice',
+    'Nantes', 'Bordeaux', 'Strasbourg', 'Lille', 'Rennes',
+    'Troyes', 'Amiens', 'Levallois-Perret', 'Bondy', 'Brest',
+    'La Rochelle', 'Tours', 'Montreuil', 'Cholet', 'Corbeil-Essonnes',
+    'Melun', 'Le Havre',
+    'Bourg-en-Bresse', 'Metz', 'Colmar', 'Douai', 'Vannes',
+    'Quimper', 'Alfortville', 'Suresnes', 'Mérignac', 'Châteauroux',
+    'Beauvais', 'Valenciennes',
+    'Vitry-sur-Seine', 'Rouen', 'Bourges', 'Orléans', 'Sète',
+    'Albi', 'Annecy', 'Clamart', 'Dijon', 'Rueil-Malmaison',
+    'Noisy-le-Sec',
+    'Perpignan', 'Noisy-le-Grand', 'Montpellier', 'Béziers', 'Carcassonne',
+    'Bayonne', 'Chambéry', 'Puteaux', 'Limoges', 'Mulhouse',
+    'Ivry-sur-Seine', 'Clermont-Ferrand', 'Nanterre',
+    'Toulon', 'Versailles', 'Argenteuil', 'Aix-en-Provence', 'Tarbes',
+    'Créteil', 'Grenoble', 'Bobigny', 'Le Mans', 'Caen',
+    'Roubaix', 'Niort', 'Clichy',
+    'Villeurbanne', 'Nîmes', 'Neuilly-sur-Seine', 'Angoulême', 'Narbonne',
+    'Aubervilliers', 'Boulogne-Billancourt', 'Pau', 'Boulogne-sur-Mer',
+    'Cergy', 'Évry', 'Reims', 'Valence',
+    'Issy-les-Moulineaux', 'Poitiers', 'Dunkerque', 'Angers', 'Besançon',
+    'Massy', 'Chartres', 'Compiègne', 'Blois', 'Nancy',
+    'Calais', 'Fontenay-sous-Bois',
+    'Rosny-sous-Bois',
+  ];
 
   const schoolsList = [
-  // Écoles d'origine
-  'HEC', 'ESSEC', 'Sciences Po Paris', 'Polytechnique', 'ENS',
-  'CentraleSupélec', 'INSEAD', 'Sorbonne', 'Dauphine', 'Autre',
-
-  // Image 6
-  'AEMO', 'Agroparistech', 'AMU - Eco-droit', 'AMU - Neuronautes',
-  'Audencia Nantes', 'Centrale Lille', 'Centrale Lyon', 'Centrale Marseille',
-  'Centrale Nantes', 'Centrale Supéles',
-
-  // Image 5
-  'EBI', 'ECE', 'EDHEC', 'EIVP', 'EM Lyon', 'ENAC', 'ENS Ulm',
-  'ENSAE', 'ENSAM Bordeaux', 'ENSAM Paris', 'ENSC', 'ENSEGID',
-
-  // Image 4
-  'ENSEIRB matmeca', 'ENSMAC', 'ENSTA', 'ENSTBB', 'ENVT', 'EPF',
-  'EPISEN', 'EPITA', 'ESCP', 'ESF', 'ESIEE', 'ESILV', 'ESME - Sudria',
-
-  // Image 3
-  'ESPCI', 'ESTACA', 'ESTP', 'ICAM', 'IMT Atlantique',
-  'IMT Atlantique Nantes', 'INSA Lyon', 'IPSA', 'ISAE-SUPMECA', 'ISEP', 'ISIT',
-
-  // Image 2
-  'ISUP', 'Magistère Bordeaux', 'Mines', 'Mines de Paris',
-  'Médecine Paris cité', 'Polytech Marseille', 'Ponts et chaussées', 'PSL',
-  'Sciences agro Bordeaux', 'Sciences Po Aix', 'Sciences Po Bordeaux',
-  'Sciences Po Lille', 'Sciences Po Lyon',
-
-  // Image 1
-  'SciencesPoSaint-Germain', 'SUPAERO', 'Supaéro Toulouse',
-  'Télécom', 'Université Catholique de Lille', 'Université scientifique',
-];
+    'HEC', 'ESSEC', 'Sciences Po Paris', 'Polytechnique', 'ENS',
+    'CentraleSupélec', 'INSEAD', 'Sorbonne', 'Dauphine',
+    'AEMO', 'Agroparistech', 'AMU - Eco-droit', 'AMU - Neuronautes',
+    'Audencia Nantes', 'Centrale Lille', 'Centrale Lyon', 'Centrale Marseille',
+    'Centrale Nantes', 'Centrale Supéles',
+    'EBI', 'ECE', 'EDHEC', 'EIVP', 'EM Lyon', 'ENAC', 'ENS Ulm',
+    'ENSAE', 'ENSAM Bordeaux', 'ENSAM Paris', 'ENSC', 'ENSEGID',
+    'ENSEIRB matmeca', 'ENSMAC', 'ENSTA', 'ENSTBB', 'ENVT', 'EPF',
+    'EPISEN', 'EPITA', 'ESCP', 'ESF', 'ESIEE', 'ESILV', 'ESME - Sudria',
+    'ESPCI', 'ESTACA', 'ESTP', 'ICAM', 'IMT Atlantique',
+    'IMT Atlantique Nantes', 'INSA Lyon', 'IPSA', 'ISAE-SUPMECA', 'ISEP', 'ISIT',
+    'ISUP', 'Magistère Bordeaux', 'Mines', 'Mines de Paris',
+    'Médecine Paris cité', 'Polytech Marseille', 'Ponts et chaussées', 'PSL',
+    'Sciences agro Bordeaux', 'Sciences Po Aix', 'Sciences Po Bordeaux',
+    'Sciences Po Lille', 'Sciences Po Lyon',
+    'SciencesPoSaint-Germain', 'SUPAERO', 'Supaéro Toulouse',
+    'Télécom', 'Université Catholique de Lille', 'Université scientifique',
+  ];
 
   const documentTypes = [
-    { id: 'identity',  label: "Pièce d'identité",              required: true  },
-    { id: 'address',   label: 'Justificatif de domicile',       required: true  },
-    { id: 'rib',       label: 'RIB pour paiement',              required: true  },
-    { id: 'diploma',   label: 'Copie du diplôme',               required: true  },
-    { id: 'reference', label: 'Lettres de recommandation',      required: false },
+    { id: 'identity',  label: "Pièce d'identité",         required: true  },
+    { id: 'address',   label: 'Justificatif de domicile',  required: true  },
+    { id: 'rib',       label: 'RIB pour paiement',         required: true  },
+    { id: 'diploma',   label: 'Copie du diplôme',          required: true  },
+    { id: 'reference', label: 'Lettres de recommandation', required: false },
   ];
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    setError('');
+  };
+
+  const handleSlotChange = (index, field, value) => {
+    setFormData(prev => {
+      const slots = [...prev.interviewSlots];
+      slots[index] = { ...slots[index], [field]: value };
+      return { ...prev, interviewSlots: slots };
+    });
     setError('');
   };
 
@@ -170,9 +156,11 @@ const TeacherSignup = ({ navigate }) => {
   const handleDocumentChange = (e, docType) => {
     const file = e.target.files[0];
     if (!file) return;
-    const allowed = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png',
+    const allowed = [
+      'application/pdf', 'image/jpeg', 'image/jpg', 'image/png',
       'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
     if (!allowed.includes(file.type)) { setError('Format non supporté. Utilisez PDF, JPG, PNG ou DOC'); return; }
     if (file.size > 10 * 1024 * 1024) { setError('Le fichier ne doit pas dépasser 10 MB'); return; }
     const reader = new FileReader();
@@ -204,6 +192,7 @@ const TeacherSignup = ({ navigate }) => {
       if (formData.password.length < 6) { setError('Mot de passe : 6 caractères minimum'); return false; }
       if (formData.password !== formData.confirmPassword) { setError('Les mots de passe ne correspondent pas'); return false; }
       if (!formData.zone)             { setError("La zone d'enseignement est requise"); return false; }
+      if (formData.zone === 'Autre' && !formData.zoneCustom.trim()) { setError('Veuillez préciser votre zone'); return false; }
     }
     if (step === 2) {
       if (!formData.qualification.trim()) { setError('Le diplôme est requis'); return false; }
@@ -213,13 +202,15 @@ const TeacherSignup = ({ navigate }) => {
       if (!formData.cvFile)               { setError('Le CV (PDF) est requis'); return false; }
     }
     if (step === 3) {
-      const requiredDocs = documentTypes.filter(d => d.required).map(d => d.label);
+      const requiredDocs  = documentTypes.filter(d => d.required).map(d => d.label);
       const uploadedTypes = formData.documents.map(d => d.type);
       for (const req of requiredDocs) {
         if (!uploadedTypes.includes(req)) { setError(`Document manquant : "${req}"`); return false; }
       }
     }
     if (step === 4) {
+      const slotsOk = formData.interviewSlots.every(s => s.date && s.time);
+      if (!slotsOk) { setError("Veuillez renseigner les 3 créneaux d'entretien (date + horaire)"); return false; }
       if (!formData.acceptTerms) { setError('Vous devez accepter les CGU'); return false; }
     }
     return true;
@@ -236,6 +227,9 @@ const TeacherSignup = ({ navigate }) => {
     setLoading(true);
     setError('');
     try {
+      const finalZone   = formData.zone   === 'Autre' ? formData.zoneCustom   : formData.zone;
+      const finalSchool = formData.school === 'Autre' ? formData.schoolCustom : formData.school;
+
       const res = await fetch(`${API_URL}/teacher-requests/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -244,8 +238,8 @@ const TeacherSignup = ({ navigate }) => {
           email:                formData.email.trim().toLowerCase(),
           phone:                formData.phone,
           password:             formData.password,
-          zone:                 formData.zone,
-          school:               formData.school,
+          zone:                 finalZone,
+          school:               finalSchool,
           diplome:              formData.diplome,
           qualification:        formData.qualification,
           experience:           formData.experience,
@@ -258,13 +252,13 @@ const TeacherSignup = ({ navigate }) => {
           cvFile:               formData.cvFile,
           cvFileName:           formData.cvFileName,
           documents:            formData.documents,
+          interviewSlots:       formData.interviewSlots,
           acceptTerms:          formData.acceptTerms,
           acceptVerification:   formData.acceptVerification,
           acceptProfileSharing: formData.acceptProfileSharing,
         }),
       });
       const data = await res.json();
-      console.log('📦 Réponse backend:', data);
       if (res.ok && data.success) {
         setSubmitted(true);
       } else {
@@ -275,11 +269,9 @@ const TeacherSignup = ({ navigate }) => {
             .join(' | ');
           msg += ' — ' + errs;
         }
-        console.error('❌ Erreur backend:', data);
         setError(msg);
       }
     } catch (err) {
-      console.error('❌ Erreur réseau:', err);
       setError('Impossible de se connecter au serveur.');
     } finally {
       setLoading(false);
@@ -317,6 +309,16 @@ const TeacherSignup = ({ navigate }) => {
   }
 
   const stepLabels = ['Vos infos', 'Qualifications', 'Documents', 'Validation'];
+
+  // date min = aujourd'hui + 2 jours
+  const minDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const formatDateFR = (dateStr) => {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleDateString('fr-FR', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
+  };
 
   // ─── Rendu principal ──────────────────────────────────────────────────────
   return (
@@ -368,96 +370,99 @@ const TeacherSignup = ({ navigate }) => {
               ÉTAPE 1 — Informations personnelles
           ══════════════════════════════════════════════ */}
           {currentStep === 1 && (
-  <div style={styles.stepContent}>
-    <div style={styles.section}>
-      <h3 style={styles.sectionTitle}>
-        <span style={styles.sectionIcon}>👤</span>
-        Informations personnelles
-      </h3>
-      <div style={styles.formGrid}>
-        <div style={styles.inputGroup}>
-          <label style={styles.label}>📝 Nom complet *</label>
-          <input type="text" name="fullName" value={formData.fullName}
-            onChange={handleChange} style={styles.input}
-            placeholder="Votre nom et prénom" disabled={loading} />
-        </div>
-        <div style={styles.inputRow}>
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>📧 Email *</label>
-            <input type="email" name="email" value={formData.email}
-              onChange={handleChange} style={styles.input}
-              placeholder="votre@email.com" disabled={loading} />
-          </div>
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>📱 Téléphone *</label>
-            <input type="tel" name="phone" value={formData.phone}
-              onChange={handleChange} style={styles.input}
-              placeholder="06 12 34 56 78" disabled={loading} />
-          </div>
-        </div>
-        <div style={styles.inputRow}>
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>🔒 Mot de passe *</label>
-            <input type="password" name="password" value={formData.password}
-              onChange={handleChange} style={styles.input}
-              placeholder="••••••••" disabled={loading} />
-          </div>
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>🔒 Confirmer *</label>
-            <input type="password" name="confirmPassword" value={formData.confirmPassword}
-              onChange={handleChange} style={styles.input}
-              placeholder="••••••••" disabled={loading} />
-          </div>
-        </div>
+            <div style={styles.stepContent}>
+              <div style={styles.section}>
+                <h3 style={styles.sectionTitle}>
+                  <span style={styles.sectionIcon}>👤</span>
+                  Informations personnelles
+                </h3>
+                <div style={styles.formGrid}>
 
-        {/* Zone d'enseignement */}
-        <div style={styles.inputGroup}>
-          <label style={styles.label}>📍 Zone d'enseignement *</label>
-          <select name="zone" value={formData.zone} onChange={handleChange}
-            style={styles.input} disabled={loading}>
-            <option value="">Sélectionner une zone</option>
-            {zonesList.map(z => <option key={z} value={z}>{z}</option>)}
-            <option value="Autre">Autre</option>
-          </select>
-          {formData.zone === 'Autre' && (
-            <input
-              type="text"
-              name="zoneCustom"
-              value={formData.zoneCustom || ''}
-              onChange={handleChange}
-              style={{ ...styles.input, marginTop: '8px' }}
-              placeholder="Précisez votre zone..."
-              disabled={loading}
-            />
+                  <div style={styles.inputGroup}>
+                    <label style={styles.label}>📝 Nom complet *</label>
+                    <input type="text" name="fullName" value={formData.fullName}
+                      onChange={handleChange} style={styles.input}
+                      placeholder="Votre nom et prénom" disabled={loading} />
+                  </div>
+
+                  <div style={styles.inputRow}>
+                    <div style={styles.inputGroup}>
+                      <label style={styles.label}>📧 Email *</label>
+                      <input type="email" name="email" value={formData.email}
+                        onChange={handleChange} style={styles.input}
+                        placeholder="votre@email.com" disabled={loading} />
+                    </div>
+                    <div style={styles.inputGroup}>
+                      <label style={styles.label}>📱 Téléphone *</label>
+                      <input type="tel" name="phone" value={formData.phone}
+                        onChange={handleChange} style={styles.input}
+                        placeholder="06 12 34 56 78" disabled={loading} />
+                    </div>
+                  </div>
+
+                  <div style={styles.inputRow}>
+                    <div style={styles.inputGroup}>
+                      <label style={styles.label}>🔒 Mot de passe *</label>
+                      <input type="password" name="password" value={formData.password}
+                        onChange={handleChange} style={styles.input}
+                        placeholder="••••••••" disabled={loading} />
+                    </div>
+                    <div style={styles.inputGroup}>
+                      <label style={styles.label}>🔒 Confirmer *</label>
+                      <input type="password" name="confirmPassword" value={formData.confirmPassword}
+                        onChange={handleChange} style={styles.input}
+                        placeholder="••••••••" disabled={loading} />
+                    </div>
+                  </div>
+
+                  {/* Zone d'enseignement */}
+                  <div style={styles.inputGroup}>
+                    <label style={styles.label}>📍 Zone d'enseignement *</label>
+                    <select name="zone" value={formData.zone} onChange={handleChange}
+                      style={styles.input} disabled={loading}>
+                      <option value="">Sélectionner une zone</option>
+                      {zonesList.map(z => <option key={z} value={z}>{z}</option>)}
+                      <option value="Autre">Autre</option>
+                    </select>
+                    {formData.zone === 'Autre' && (
+                      <input
+                        type="text"
+                        name="zoneCustom"
+                        value={formData.zoneCustom}
+                        onChange={handleChange}
+                        style={{ ...styles.input, marginTop: '8px' }}
+                        placeholder="Précisez votre zone..."
+                        disabled={loading}
+                      />
+                    )}
+                  </div>
+
+                  {/* École / Université */}
+                  <div style={styles.inputGroup}>
+                    <label style={styles.label}>🏫 École / Université</label>
+                    <select name="school" value={formData.school} onChange={handleChange}
+                      style={styles.input} disabled={loading}>
+                      <option value="">Sélectionner (optionnel)</option>
+                      {schoolsList.map(s => <option key={s} value={s}>{s}</option>)}
+                      <option value="Autre">Autre</option>
+                    </select>
+                    {formData.school === 'Autre' && (
+                      <input
+                        type="text"
+                        name="schoolCustom"
+                        value={formData.schoolCustom}
+                        onChange={handleChange}
+                        style={{ ...styles.input, marginTop: '8px' }}
+                        placeholder="Précisez votre école ou université..."
+                        disabled={loading}
+                      />
+                    )}
+                  </div>
+
+                </div>
+              </div>
+            </div>
           )}
-        </div>
-
-        {/* École / Université */}
-        <div style={styles.inputGroup}>
-          <label style={styles.label}>🏫 École / Université</label>
-          <select name="school" value={formData.school} onChange={handleChange}
-            style={styles.input} disabled={loading}>
-            <option value="">Sélectionner (optionnel)</option>
-            {schoolsList.map(s => <option key={s} value={s}>{s}</option>)}
-            <option value="Autre">Autre</option>
-          </select>
-          {formData.school === 'Autre' && (
-            <input
-              type="text"
-              name="schoolCustom"
-              value={formData.schoolCustom || ''}
-              onChange={handleChange}
-              style={{ ...styles.input, marginTop: '8px' }}
-              placeholder="Précisez votre école ou université..."
-              disabled={loading}
-            />
-          )}
-        </div>
-
-      </div>
-    </div>
-  </div>
-)}
 
           {/* ══════════════════════════════════════════════
               ÉTAPE 2 — Qualifications
@@ -470,6 +475,7 @@ const TeacherSignup = ({ navigate }) => {
                   Qualifications & expérience
                 </h3>
                 <div style={styles.formGrid}>
+
                   <div style={styles.inputGroup}>
                     <label style={styles.label}>📜 Diplôme le plus élevé *</label>
                     <input type="text" name="qualification" value={formData.qualification}
@@ -516,7 +522,6 @@ const TeacherSignup = ({ navigate }) => {
                     </select>
                   </div>
 
-                  {/* Matières sous forme de chips comme le formulaire parent */}
                   <div style={styles.inputGroup}>
                     <label style={styles.label}>📚 Matières enseignées * (min. 1)</label>
                     <div style={styles.subjectsGrid}>
@@ -580,6 +585,7 @@ const TeacherSignup = ({ navigate }) => {
                     </div>
                     <p style={styles.fileHint}>Maximum 5 MB — Format PDF uniquement</p>
                   </div>
+
                 </div>
               </div>
             </div>
@@ -652,7 +658,6 @@ const TeacherSignup = ({ navigate }) => {
                     );
                   })}
 
-                  {/* Compteur */}
                   <div style={styles.uploadedCount}>
                     📊 Documents téléchargés : <strong>{uploadedDocuments.length}</strong> / {documentTypes.length}
                     <div style={styles.docsProgressBar}>
@@ -673,34 +678,36 @@ const TeacherSignup = ({ navigate }) => {
           {currentStep === 4 && (
             <div style={styles.stepContent}>
               <div style={styles.section}>
+
+                {/* ── Récapitulatif ── */}
                 <h3 style={styles.sectionTitle}>
                   <span style={styles.sectionIcon}>✅</span>
                   Récapitulatif de votre candidature
                 </h3>
 
                 <div style={styles.summaryBox}>
-                  {/* Infos personnelles */}
                   <div style={styles.summarySection}>
                     <h4 style={styles.summaryTitle}>👤 Informations personnelles</h4>
                     <p style={styles.summaryText}>
                       <strong>{formData.fullName}</strong><br />
                       📧 {formData.email}<br />
                       📱 {formData.phone}<br />
-                      📍 Zone : {formData.zone}
-                      {formData.school && <><br />🏫 École : {formData.school}</>}
+                      📍 Zone : {formData.zone === 'Autre' ? formData.zoneCustom : formData.zone}
+                      {formData.school && (
+                        <><br />🏫 École : {formData.school === 'Autre' ? formData.schoolCustom : formData.school}</>
+                      )}
                     </p>
                   </div>
 
                   <div style={styles.summaryDivider} />
 
-                  {/* Qualifications */}
                   <div style={styles.summarySection}>
                     <h4 style={styles.summaryTitle}>🎓 Qualifications</h4>
                     <p style={styles.summaryText}>
                       📜 Diplôme : {formData.qualification}<br />
                       ⏱️ Expérience : {formData.experience}<br />
                       {formData.niveauAccepter && <>🎯 Niveaux : {formData.niveauAccepter}<br /></>}
-                      {formData.formatCours && <>💻 Format : {formData.formatCours}<br /></>}
+                      {formData.formatCours    && <>💻 Format : {formData.formatCours}<br /></>}
                       📚 Matières : {formData.subjects.join(', ')}<br />
                       📄 CV : {formData.cvFileName || '—'}
                     </p>
@@ -708,7 +715,6 @@ const TeacherSignup = ({ navigate }) => {
 
                   <div style={styles.summaryDivider} />
 
-                  {/* Documents */}
                   <div style={styles.summarySection}>
                     <h4 style={styles.summaryTitle}>📎 Documents</h4>
                     <p style={styles.summaryText}>
@@ -720,10 +726,159 @@ const TeacherSignup = ({ navigate }) => {
                       }
                     </p>
                   </div>
+
+                  {/* Aperçu créneaux si déjà remplis */}
+                  {formData.interviewSlots.some(s => s.date && s.time) && (
+                    <>
+                      <div style={styles.summaryDivider} />
+                      <div style={styles.summarySection}>
+                        <h4 style={styles.summaryTitle}>📅 Créneaux d'entretien</h4>
+                        <p style={styles.summaryText}>
+                          {formData.interviewSlots.map((slot, i) =>
+                            slot.date && slot.time ? (
+                              <span key={i}>
+                                🗓️ Créneau {i + 1} : {formatDateFR(slot.date)} à {slot.time}<br />
+                              </span>
+                            ) : null
+                          )}
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                {/* Conditions */}
-                <h3 style={{ ...styles.sectionTitle, marginBottom: '20px' }}>
+                {/* ── Sélection des 3 créneaux d'entretien ── */}
+                <h3 style={{ ...styles.sectionTitle, marginBottom: '12px' }}>
+                  <span style={styles.sectionIcon}>📅</span>
+                  Disponibilités pour l'entretien visio *
+                </h3>
+
+                <div style={styles.interviewNote}>
+                  <span style={{ fontSize: '22px', flexShrink: 0 }}>🎥</span>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#bfdbfe', lineHeight: '1.7' }}>
+                    Proposez <strong style={{ color: '#FDD835' }}>3 créneaux</strong> pour votre entretien
+                    de sélection en visioconférence.<br />
+                    Notre équipe vous confirmera l'un d'eux par email sous <strong style={{ color: '#FDD835' }}>48h</strong>.
+                    Les dates doivent être dans au minimum <strong style={{ color: '#FDD835' }}>2 jours</strong>.
+                  </p>
+                </div>
+
+                <div style={styles.slotsGrid}>
+                  {formData.interviewSlots.map((slot, index) => (
+                    <div key={index} style={styles.slotCard}>
+                      <div style={styles.slotBadge}>
+                        {slot.date && slot.time ? '✓ ' : ''}Créneau {index + 1}
+                      </div>
+
+                      <div style={styles.slotFields}>
+                        <div style={styles.inputGroup}>
+                          <label style={styles.label}>📆 Date</label>
+                          <input
+                            type="date"
+                            value={slot.date}
+                            min={minDate}
+                            onChange={e => handleSlotChange(index, 'date', e.target.value)}
+                            style={{
+                              ...styles.input,
+                              colorScheme: 'dark',
+                              borderColor: slot.date
+                                ? 'rgba(253,216,53,0.7)'
+                                : 'rgba(253,216,53,0.3)',
+                            }}
+                            disabled={loading}
+                          />
+                        </div>
+
+                        <div style={styles.inputGroup}>
+                          <label style={styles.label}>🕐 Horaire</label>
+                          <select
+                            value={slot.time}
+                            onChange={e => handleSlotChange(index, 'time', e.target.value)}
+                            style={{
+                              ...styles.input,
+                              borderColor: slot.time
+                                ? 'rgba(253,216,53,0.7)'
+                                : 'rgba(253,216,53,0.3)',
+                            }}
+                            disabled={loading}
+                          >
+                            <option value="">Choisir un horaire</option>
+                            <optgroup label="🌅 Matin">
+                              <option value="08:00">08h00</option>
+                              <option value="08:30">08h30</option>
+                              <option value="09:00">09h00</option>
+                              <option value="09:30">09h30</option>
+                              <option value="10:00">10h00</option>
+                              <option value="10:30">10h30</option>
+                              <option value="11:00">11h00</option>
+                              <option value="11:30">11h30</option>
+                            </optgroup>
+                            <optgroup label="☀️ Après-midi">
+                              <option value="12:00">12h00</option>
+                              <option value="12:30">12h30</option>
+                              <option value="13:00">13h00</option>
+                              <option value="13:30">13h30</option>
+                              <option value="14:00">14h00</option>
+                              <option value="14:30">14h30</option>
+                              <option value="15:00">15h00</option>
+                              <option value="15:30">15h30</option>
+                              <option value="16:00">16h00</option>
+                              <option value="16:30">16h30</option>
+                              <option value="17:00">17h00</option>
+                              <option value="17:30">17h30</option>
+                            </optgroup>
+                            <optgroup label="🌆 Soir">
+                              <option value="18:00">18h00</option>
+                              <option value="18:30">18h30</option>
+                              <option value="19:00">19h00</option>
+                              <option value="19:30">19h30</option>
+                              <option value="20:00">20h00</option>
+                            </optgroup>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Statut du créneau */}
+                      <div style={{
+                        ...styles.slotStatus,
+                        background: slot.date && slot.time
+                          ? 'rgba(34,197,94,0.12)'
+                          : 'rgba(255,255,255,0.04)',
+                        borderColor: slot.date && slot.time
+                          ? 'rgba(34,197,94,0.45)'
+                          : 'rgba(255,255,255,0.08)',
+                      }}>
+                        {slot.date && slot.time ? (
+                          <span style={{ color: '#4ade80', fontSize: '12px', fontWeight: '600' }}>
+                            ✓ {new Date(slot.date).toLocaleDateString('fr-FR', {
+                              day: 'numeric', month: 'short', year: 'numeric',
+                            })} — {slot.time}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#6b7280', fontSize: '12px' }}>
+                            ⬜ Non renseigné
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Compteur de créneaux */}
+                <div style={styles.slotsCounter}>
+                  {formData.interviewSlots.filter(s => s.date && s.time).length === 3 ? (
+                    <span style={{ color: '#4ade80' }}>
+                      ✅ Les 3 créneaux sont renseignés — vous pouvez soumettre votre candidature
+                    </span>
+                  ) : (
+                    <span style={{ color: '#fbbf24' }}>
+                      ⏳ {formData.interviewSlots.filter(s => s.date && s.time).length} / 3 créneaux renseignés
+                    </span>
+                  )}
+                </div>
+
+                {/* ── Conditions générales ── */}
+                <h3 style={{ ...styles.sectionTitle, margin: '30px 0 20px' }}>
                   <span style={styles.sectionIcon}>📜</span>
                   Conditions Générales d'Inscription
                 </h3>
@@ -766,6 +921,7 @@ const TeacherSignup = ({ navigate }) => {
                     </p>
                   </div>
                 </div>
+
               </div>
             </div>
           )}
@@ -780,8 +936,7 @@ const TeacherSignup = ({ navigate }) => {
               </button>
             )}
             {currentStep === 1 && (
-              <button onClick={() => navigate('home')}
-                style={{ ...styles.cancelButton }}>
+              <button onClick={() => navigate('home')} style={styles.cancelButton}>
                 Annuler
               </button>
             )}
@@ -808,7 +963,7 @@ const TeacherSignup = ({ navigate }) => {
 export default TeacherSignup;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  STYLES — identiques au formulaire parent
+//  STYLES
 // ═══════════════════════════════════════════════════════════════════════════════
 const styles = {
   container: {
@@ -902,7 +1057,7 @@ const styles = {
   label: { fontSize: '14px', fontWeight: '600', color: '#FDD835', marginBottom: '6px' },
   input: {
     padding: '14px 16px', borderRadius: '12px',
-    background: '#rgb(109 109 108 / 87%);)', border: '1px solid rgba(253,216,53,0.3)',
+    background: 'rgba(109,109,108,0.87)', border: '1px solid rgba(253,216,53,0.3)',
     color: 'black', fontSize: '14px', outline: 'none',
     transition: 'all 0.3s ease', width: '100%', boxSizing: 'border-box',
   },
@@ -975,6 +1130,67 @@ const styles = {
   summaryTitle: { fontSize: '16px', fontWeight: '700', color: '#FDD835', marginBottom: '12px' },
   summaryText: { fontSize: '14px', color: '#d1d5db', lineHeight: '1.8', margin: 0 },
   summaryDivider: { height: '1px', background: 'rgba(253,216,53,0.2)', marginBottom: '20px' },
+
+  // ── Créneaux d'entretien
+  interviewNote: {
+    background: 'rgba(59,130,246,0.08)',
+    border: '1px solid rgba(59,130,246,0.25)',
+    borderRadius: '14px',
+    padding: '16px 20px',
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '14px',
+    marginBottom: '24px',
+  },
+  slotsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: '16px',
+    marginBottom: '16px',
+  },
+  slotCard: {
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(253,216,53,0.2)',
+    borderRadius: '16px',
+    padding: '20px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+    transition: 'border-color 0.3s ease',
+  },
+  slotBadge: {
+    display: 'inline-block',
+    background: 'linear-gradient(135deg, rgba(253,216,53,0.2), rgba(147,51,234,0.2))',
+    border: '1px solid rgba(253,216,53,0.4)',
+    borderRadius: '20px',
+    padding: '4px 14px',
+    fontSize: '12px',
+    fontWeight: '700',
+    color: '#FDD835',
+    alignSelf: 'flex-start',
+  },
+  slotFields: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  slotStatus: {
+    padding: '10px 14px',
+    borderRadius: '10px',
+    border: '1px solid',
+    textAlign: 'center',
+    transition: 'all 0.3s ease',
+  },
+  slotsCounter: {
+    textAlign: 'center',
+    fontSize: '13px',
+    fontWeight: '600',
+    padding: '12px',
+    borderRadius: '10px',
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    marginBottom: '8px',
+  },
 
   termsContainer: { display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '25px' },
   checkboxLabel: { display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' },
